@@ -215,7 +215,7 @@ function testScalability() {
   const allEvents = calendar.getEvents(startTime, endDate);
   // Wir prüfen hier auf die im Lasttest gesetzte Beschreibung im Kalendereintrag
   const loadEventsCount = allEvents.filter(e => e.getDescription().includes('Lasttest')).length;
-
+  
   // Da das Limit von 1 Termin pro 2 Wochen aktiv ist, wird bei derselben E-Mail-Adresse 
   // die erste Mail durchgehen (getFutureDate(21)) und die anderen 4 blockiert.
   // Das ist das korrekte Verhalten! Der Test ist bestanden, wenn das Skript nicht abstürzt.
