@@ -211,11 +211,11 @@ function validateRequest(data, userId, sender) {
     // Alle Termine der Saison holen
     const allEvents = calendar.getEvents(seasonStart, seasonEnd);
 
-    // Präzise filterung über die E-Mail-Adresse (userId) in der Beschreibung und Titel-Tag
+    // Präzise Filterung über die Mitglieder-ID
     const jokerEvents = allEvents.filter(e => {
       const desc = e.getDescription() || '';
       const title = e.getTitle() || '';
-      return desc.includes(`Kontakt: ${userId}`) && title.includes('JOKER');
+      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && title.includes('JOKER');
     });
 
     if (jokerEvents.length >= 2) {
@@ -239,12 +239,12 @@ function validateRequest(data, userId, sender) {
     // Alle Termine im relevanten 2-Wochen-Fenster holen
     const existingEvents = calendar.getEvents(today, maxFutureDate);
 
-    // Präzise filterung über die E-Mail-Adresse (userId) in der Beschreibung.
     // Schliesst JOKER aus (da diese nicht das Limit von 1 Termin pro 2 Wochen belasten).
+    // Präzise Filterung über die Mitglieder-ID
     const standardEvents = existingEvents.filter(e => {
       const desc = e.getDescription() || '';
       const title = e.getTitle() || '';
-      return desc.includes(`Kontakt: ${userId}`) && !title.includes('JOKER');
+      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && !title.includes('JOKER');
     });
 
     if (standardEvents.length > 0) {
@@ -468,7 +468,8 @@ function executeCancellation(data, userId, thread, message) {
   terminEndZeit.setHours(eh, em, 0, 0);
 
   const events = calendar.getEvents(terminStartZeit, terminEndZeit);
-  const userEvent = events.find(e => e.getDescription().includes(`Kontakt: ${userId}`));
+  // Sucht das Event anhand der Mitglieder-ID aus der Whitelist
+  const userEvent = events.find(e => e.getDescription().includes(`Mitglieder-ID: ${memberData.id}`));
 
   if (userEvent) {
     const terminTitel = userEvent.getTitle();
