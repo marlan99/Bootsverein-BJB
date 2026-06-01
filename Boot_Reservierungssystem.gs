@@ -4,16 +4,16 @@
 // ===============================================
 
 const CONFIG = {
-  CALENDAR_ID: '612c3c230f9b03de10af083aa9e2460e685682929d057ecdddc30514f0eebc69@group.calendar.google.com', 
+  CALENDAR_ID: 'DEINE KALENDER ID', // <--- Hier die KALENDER ID eintragen
   GMAIL_LABEL: 'Reservierung/Neu',               
-  SHEET_CONFIG_ID: '148L4VIaMiyTgSa_EmrOIb8_4KezUGOZp5sl2DHwaqL0', // <--- Hier die ID der Google Tabelle eintragen    
+  SHEET_CONFIG_ID: 'DEINE GOOGLE SHEET ID', // <--- Hier die ID der Google Tabelle eintragen    
   SHEET_WHITELIST_NAME: '24 Mitglieder - Motorboot', // <--- Name des Tabellenblatts mit den Mailadressen
   SLOT_VORMITTAG: { start: '06:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
   JOKER_MAX_WEEKS: 6, // Maximal 6 Wochen in der Zukunft
   STANDARD_MAX_DAYS: 14,
   REMINDER_MINUTES: 1440, 
-  ADMIN_EMAIL: 'marcel.landolt72@gmail.com'
+  ADMIN_EMAIL: 'Bootsclub1890@gmail.com'
 };
 
 function processReservationEmails() {
