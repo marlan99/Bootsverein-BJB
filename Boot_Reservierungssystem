@@ -4,16 +4,16 @@
 // ===============================================
 
 const CONFIG = {
-  CALENDAR_ID: 'DEINE_KALENDER_ID', // <--- Hier die ID des Google Kalender eintragen
+  CALENDAR_ID: '612c3c230f9b03de10af083aa9e2460e685682929d057ecdddc30514f0eebc69@group.calendar.google.com', 
   GMAIL_LABEL: 'Reservierung/Neu',               
-  SHEET_CONFIG_ID: 'DEINE_CONFIG_SHEET_ID', // <--- Hier die ID der Google Tabelle eintragen
-  SHEET_WHITELIST_NAME: 'Whitelist',       // <--- Name des Tabellenblatts mit den Mailadressen      
+  SHEET_CONFIG_ID: '148L4VIaMiyTgSa_EmrOIb8_4KezUGOZp5sl2DHwaqL0', // <--- Hier die ID der Google Tabelle eintragen    
+  SHEET_WHITELIST_NAME: '24 Mitglieder - Motorboot', // <--- Name des Tabellenblatts mit den Mailadressen
   SLOT_VORMITTAG: { start: '06:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
   JOKER_MAX_WEEKS: 6, // Maximal 6 Wochen in der Zukunft
   STANDARD_MAX_DAYS: 14,
   REMINDER_MINUTES: 1440, 
-  ADMIN_EMAIL: 'Bootsclub1890@gmail.com' // <--- Hier die korrekte Empfänger Mailadresse des Kalenders eintragen
+  ADMIN_EMAIL: 'marcel.landolt72@gmail.com'
 };
 
 function processReservationEmails() {
@@ -164,13 +164,21 @@ function parseEmailTemplate(body) {
 }
 
 function validateRequest(data, userId, sender) {
-  // === 0. PRÜFUNG: Ist der Absender auf der Whitelist? ===
-  if (!isUserAuthorized(userId)) {
+  // === 0. PRÜFUNG & DATEN RECHERCHE: Ist der Absender auf der Whitelist? ===
+  const memberData = getAuthorizedUserData(userId);
+  
+  if (!memberData) {
     return { 
       valid: false, 
       error: `Deine E-Mail-Adresse (${userId}) ist nicht für das Reservierungssystem freigeschaltet. Bitte wende dich an den Vorstand.` 
     };
   }
+  
+  // Die echten, geprüften Daten aus der Excel/Google-Tabelle an "data" anheften
+  data.memberId = memberData.id;
+  data.memberMobile = memberData.mobile;
+  // Optional: Überschreibt den Namen aus der E-Mail mit dem offiziellen Namen aus der Tabelle
+  if (memberData.name) data.name = memberData.name;
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -398,27 +406,27 @@ function setupTriggers() {
 function executeCancellation(data, userId, thread, message) {
   const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
 
-  // === 0. PRÜFUNG: Ist der Absender (noch) auf der Whitelist? ===
-  if (!isUserAuthorized(userId)) {
+  // === 0. PRÜFUNG: Ist der Absender auf der Whitelist? ===
+  const memberData = getAuthorizedUserData(userId);
+  if (!memberData) {
     GmailApp.sendEmail(
       userId, 
       'Stornierung abgelehnt - Keine Berechtigung', 
-      `Hallo,\n\ndeine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt oder wurde deaktiviert. Automatische Stornierungen sind nicht möglich. Bitte wende dich direkt an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
+      `Hallo,\n\ndeine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt. Automatische Stornierungen sind nicht möglich.`, 
       { replyTo: CONFIG.ADMIN_EMAIL }
     );
     message.markRead();
     
-    // Unter "Reservierung/Abgelehnt" ablegen und aus "Neu" entfernen
     const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
     thread.addLabel(labelAbgelehnt);
     if (labelNeu) thread.removeLabel(labelNeu);
     thread.moveToArchive();
-    
-    Logger.log(`Stornierungsversuch von nicht autorisierter Adresse blockiert: ${userId}`);
     return;
   }
+  
+  // Namen aus der Tabelle für die Stornierungs-Mail setzen
+  data.name = memberData.name;
 
-  // === AB HIER FOLGT DEINE BESTEHENDE LOGIK ===
   const jetzt = new Date(); 
 
   const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
@@ -504,32 +512,52 @@ function executeCancellation(data, userId, thread, message) {
 }
 
 /**
- * Prüft, ob eine E-Mail-Adresse in der Whitelist-Tabelle existiert.
+ * Prüft die Whitelist und gibt bei Erfolg alle Benutzerdaten zurück.
  * @param {string} email - Die zu prüfende E-Mail-Adresse
- * @return {boolean} - true, wenn die E-Mail erlaubt ist
+ * @return {Object|null} - Objekt mit Benutzerdaten oder null, wenn nicht gefunden
  */
-function isUserAuthorized(email) {
+function getAuthorizedUserData(email) {
   try {
     const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
     const sheet = ss.getSheetByName(CONFIG.SHEET_WHITELIST_NAME);
     
     if (!sheet) {
       Logger.log(`Fehler: Tabellenblatt "${CONFIG.SHEET_WHITELIST_NAME}" nicht gefunden.`);
-      return false; // Sicherheitshalber sperren, wenn Tabelle fehlt
+      return null;
     }
     
-    // Holt alle Daten aus der ersten Spalte (A) ab Zeile 1
     const lastRow = sheet.getLastRow();
-    if (lastRow === 0) return false; // Leere Liste
+    if (lastRow <= 1) return null; // Tabelle ist leer (oder enthält nur die Kopfzeile)
     
-    const emailRange = sheet.getRange(1, 1, lastRow, 1).getValues();
+    // Holt alle Daten ab Zeile 2 (ohne Kopfzeile) bis zur 5. Spalte (Spalte E / Mobile)
+    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    const searchEmail = email.trim().toLowerCase();
     
-    // Array flachklopfen, Leerzeichen entfernen und in Kleinbuchstaben umwandeln
-    const authorizedEmails = emailRange.map(row => row[0].toString().trim().toLowerCase());
+    // Zeilen durchlaufen und nach der E-Mail in Spalte D (Index 3) suchen
+    for (let i = 0; i < dataRange.length; i++) {
+      const row = dataRange[i];
+      const currentEmail = row[3].toString().trim().toLowerCase(); // Spalte D: E-Mail
+      
+      if (currentEmail === searchEmail) {
+        // Person gefunden! Wir bauen Vorname und Name zusammen.
+        const vorname = row[1].toString().trim();
+        const nachname = row[2].toString().trim();
+        const vollerName = `${vorname} ${nachname}`.trim();
+
+        return {
+          id: row[0],         // Spalte A: Mitglieder-ID
+          vorname: vorname,   // Spalte B: Vorname
+          nachname: nachname, // Spalte C: Name
+          name: vollerName,   // Kombiniert: "Vorname Name"
+          email: row[3],      // Spalte D: E-Mail
+          mobile: row[4]      // Spalte E: Mobile
+        };
+      }
+    }
     
-    return authorizedEmails.includes(email.trim().toLowerCase());
+    return null; // Keine Übereinstimmung gefunden
   } catch (e) {
-    Logger.log('Fehler bei der Whitelist-Prüfung: ' + e.message);
-    return false; // Bei Fehlern im Zugriff Zugriff verweigern
+    Logger.log('Fehler beim Einlesen der Mitgliederdaten: ' + e.message);
+    return null;
   }
 }
