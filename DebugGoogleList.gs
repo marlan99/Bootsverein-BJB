@@ -1,7 +1,7 @@
 function debugSpecificWhitelistEmail() {
   // ==========================================
   // HIER DIE ZU PRÜFENDE E-MAIL EINTRAGEN:
-  const testEmail = "rene.knoblauch@juliusbaer.com"; 
+  const testEmail = "test.user@juliusbaer.com"; 
   // ==========================================
 
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
@@ -13,6 +13,11 @@ function debugSpecificWhitelistEmail() {
   }
   
   const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    Logger.log("❌ FEHLER: Das Tabellenblatt ist leer oder enthält nur die Kopfzeile.");
+    return;
+  }
+
   const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
   const searchEmail = testEmail.trim().toLowerCase();
   
@@ -23,16 +28,35 @@ function debugSpecificWhitelistEmail() {
   
   for (let i = 0; i < dataRange.length; i++) {
     const row = dataRange[i];
-    const emailInTable = row[3] ? row[3].toString() : '';
+    
+    // Sicherheitsprüfung für komplett leere Zeilen in der Whitelist
+    if (!row[3]) continue; 
+    
+    const emailInTable = row[3].toString();
     const emailInTableCompare = emailInTable.trim().toLowerCase();
     
     if (emailInTableCompare === searchEmail) {
       Logger.log(`✅ MATCH GEFUNDEN in Zeile ${i + 2}!`);
-      Logger.log(`   -> ID: "${row[0]}"`);
-      Logger.log(`   -> Vorname: "${row[1]}"`);
-      Logger.log(`   -> Nachname: "${row[2]}"`);
-      Logger.log(`   -> E-Mail in Zelle: "${emailInTable}" (Länge: ${emailInTable.length} Zeichen)`);
-      Logger.log(`   -> Mobile: "${row[4]}"`);
+      
+      // Dieselbe Logik wie im Hauptskript anwenden
+      const id = row[0] ? row[0].toString().trim() : 'Keine ID';
+      const vorname = row[1] ? row[1].toString().trim() : '';
+      const nachname = row[2] ? row[2].toString().trim() : '';
+      
+      let vollerName = `${vorname} ${nachname}`.trim();
+      if (!vollerName) vollerName = emailInTableCompare;
+
+      const mobileRaw = row[4] ? row[4].toString().trim() : '';
+      const mobile = mobileRaw !== '' ? mobileRaw : 'Nicht hinterlegt';
+
+      // Detailreiches Logging für die Fehlersuche
+      Logger.log(`   -> Extrahierte ID:       "${id}"`);
+      Logger.log(`   -> Vorname (Rohdaten):   "${vorname}" ${vorname === '' ? '(LEER)' : ''}`);
+      Logger.log(`   -> Nachname (Rohdaten):  "${nachname}" ${nachname === '' ? '(LEER)' : ''}`);
+      Logger.log(`   -> Generierter Name:     "${vollerName}"`);
+      Logger.log(`   -> E-Mail in Zelle:      "${emailInTable}" (Länge: ${emailInTable.length} Zeichen)`);
+      Logger.log(`   -> Mobilnummer:          "${mobile}" ${mobileRaw === '' ? '(Zelle war leer -> Fallback aktiv)' : ''}`);
+      
       gefunden = true;
       break;
     }
