@@ -515,6 +515,7 @@ function executeCancellation(data, userId, thread, message) {
 
 /**
  * Prüft die Whitelist und gibt bei Erfolg alle Benutzerdaten zurück.
+ * Unterstützt auch fehlende Mobilnummern oder Nachnamen.
  * @param {string} email - Die zu prüfende E-Mail-Adresse
  * @return {Object|null} - Objekt mit Benutzerdaten oder null, wenn nicht gefunden
  */
@@ -538,21 +539,35 @@ function getAuthorizedUserData(email) {
     // Zeilen durchlaufen und nach der E-Mail in Spalte D (Index 3) suchen
     for (let i = 0; i < dataRange.length; i++) {
       const row = dataRange[i];
+      
+      // Sicherheitsprüfung, falls eine Zeile komplett leer ist
+      if (!row[3]) continue; 
+      
       const currentEmail = row[3].toString().trim().toLowerCase(); // Spalte D: E-Mail
       
       if (currentEmail === searchEmail) {
-        // Person gefunden! Wir bauen Vorname und Name zusammen.
-        const vorname = row[1].toString().trim();
-        const nachname = row[2].toString().trim();
-        const vollerName = `${vorname} ${nachname}`.trim();
+        // Person gefunden! 
+        // Falls Werte null/undefined sind, fangen wir das mit || '' ab
+        const vorname = row[1] ? row[1].toString().trim() : '';
+        const nachname = row[2] ? row[2].toString().trim() : '';
+        
+        // Verhindert doppelte Leerzeichen, falls der Nachname fehlt
+        let vollerName = `${vorname} ${nachname}`.trim();
+        if (!vollerName) {
+          vollerName = email; // Fallback, falls absolut kein Name eingetragen ist
+        }
+
+        // Mobilnummer prüfen. Falls leer, Standardtext setzen
+        const mobileRaw = row[4] ? row[4].toString().trim() : '';
+        const mobile = mobileRaw !== '' ? mobileRaw : 'Nicht hinterlegt';
 
         return {
-          id: row[0],         // Spalte A: Mitglieder-ID
+          id: row[0] ? row[0].toString().trim() : 'Keine ID', // Spalte A: Mitglieder-ID
           vorname: vorname,   // Spalte B: Vorname
           nachname: nachname, // Spalte C: Name
-          name: vollerName,   // Kombiniert: "Vorname Name"
+          name: vollerName,   // Kombiniert ohne doppelte Leerzeichen
           email: row[3],      // Spalte D: E-Mail
-          mobile: row[4]      // Spalte E: Mobile
+          mobile: mobile      // Spalte E: Mobile (garantiert ein String)
         };
       }
     }
