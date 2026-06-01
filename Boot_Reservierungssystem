@@ -4,7 +4,7 @@
 // ===============================================
 
 const CONFIG = {
-  CALENDAR_ID: '612c3c230f9b03de10af083aa9e2460e685682929d057ecdddc30514f0eebc69@group.calendar.google.com', 
+  CALENDAR_ID: 'DEINE_KALENDER_ID', 
   GMAIL_LABEL: 'Reservierung/Neu',               
   SHEET_CONFIG_ID: 'DEINE_CONFIG_SHEET_ID',      
   SLOT_VORMITTAG: { start: '06:00', end: '14:00' },
@@ -12,7 +12,7 @@ const CONFIG = {
   JOKER_MAX_WEEKS: 6, // Maximal 6 Wochen in der Zukunft
   STANDARD_MAX_DAYS: 14,
   REMINDER_MINUTES: 1440, 
-  ADMIN_EMAIL: 'marcel.landolt72@gmail.com'
+  ADMIN_EMAIL: 'Bootsclub1890@gmail.com'
 };
 
 function processReservationEmails() {
@@ -163,6 +163,14 @@ function parseEmailTemplate(body) {
 }
 
 function validateRequest(data, userId, sender) {
+  // === 0. PRÜFUNG: Ist der Absender auf der Whitelist? ===
+  if (!isUserAuthorized(userId)) {
+    return { 
+      valid: false, 
+      error: `Deine E-Mail-Adresse (${userId}) ist nicht für das Reservierungssystem freigeschaltet. Bitte wende dich an den Vorstand.` 
+    };
+  }
+  
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
@@ -387,8 +395,30 @@ function setupTriggers() {
 }
 
 function executeCancellation(data, userId, thread, message) {
-  const jetzt = new Date(); 
   const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
+
+  // === 0. PRÜFUNG: Ist der Absender (noch) auf der Whitelist? ===
+  if (!isUserAuthorized(userId)) {
+    GmailApp.sendEmail(
+      userId, 
+      'Stornierung abgelehnt - Keine Berechtigung', 
+      `Hallo,\n\ndeine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt oder wurde deaktiviert. Automatische Stornierungen sind nicht möglich. Bitte wende dich direkt an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
+      { replyTo: CONFIG.ADMIN_EMAIL }
+    );
+    message.markRead();
+    
+    // Unter "Reservierung/Abgelehnt" ablegen und aus "Neu" entfernen
+    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
+    thread.addLabel(labelAbgelehnt);
+    if (labelNeu) thread.removeLabel(labelNeu);
+    thread.moveToArchive();
+    
+    Logger.log(`Stornierungsversuch von nicht autorisierter Adresse blockiert: ${userId}`);
+    return;
+  }
+
+  // === AB HIER FOLGT DEINE BESTEHENDE LOGIK ===
+  const jetzt = new Date(); 
 
   const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
   const terminStartZeit = new Date(data.parsedDate);
@@ -469,5 +499,36 @@ function executeCancellation(data, userId, thread, message) {
     thread.addLabel(labelAbgelehnt);
     if (labelNeu) thread.removeLabel(labelNeu);
     thread.moveToArchive();
+  }
+}
+
+/**
+ * Prüft, ob eine E-Mail-Adresse in der Whitelist-Tabelle existiert.
+ * @param {string} email - Die zu prüfende E-Mail-Adresse
+ * @return {boolean} - true, wenn die E-Mail erlaubt ist
+ */
+function isUserAuthorized(email) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
+    const sheet = ss.getSheetByName(CONFIG.SHEET_WHITELIST_NAME);
+    
+    if (!sheet) {
+      Logger.log(`Fehler: Tabellenblatt "${CONFIG.SHEET_WHITELIST_NAME}" nicht gefunden.`);
+      return false; // Sicherheitshalber sperren, wenn Tabelle fehlt
+    }
+    
+    // Holt alle Daten aus der ersten Spalte (A) ab Zeile 1
+    const lastRow = sheet.getLastRow();
+    if (lastRow === 0) return false; // Leere Liste
+    
+    const emailRange = sheet.getRange(1, 1, lastRow, 1).getValues();
+    
+    // Array flachklopfen, Leerzeichen entfernen und in Kleinbuchstaben umwandeln
+    const authorizedEmails = emailRange.map(row => row[0].toString().trim().toLowerCase());
+    
+    return authorizedEmails.includes(email.trim().toLowerCase());
+  } catch (e) {
+    Logger.log('Fehler bei der Whitelist-Prüfung: ' + e.message);
+    return false; // Bei Fehlern im Zugriff Zugriff verweigern
   }
 }
