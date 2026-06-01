@@ -323,10 +323,24 @@ function sendConfirmationEmail(to, event, data, thread) {
 
   const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\nDatum: ${data.parsedDate.toLocaleDateString('de-CH')}\nSlot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\nTyp: ${data.type === 'joker' ? 'Joker' : 'Standard'}\n\nDu erhältst 1 Tag vorher eine Erinnerung per E-Mail.\n\nVielen Dank!\nDein Vorstand`;
 
-  GmailApp.sendEmail(to, subject, plainBody, { 
-    replyTo: CONFIG.ADMIN_EMAIL,
-    htmlBody: htmlBody 
-  });
+  try {
+    // Versuche die Bestätigungs-Mail normal zu versenden
+    GmailApp.sendEmail(to, subject, plainBody, { 
+      replyTo: CONFIG.ADMIN_EMAIL,
+      htmlBody: htmlBody 
+    });
+  } catch (error) {
+    // Falls das Limit erreicht ist, fangen wir den Fehler ab
+    Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Bestätigung für ${data.name} (Datum: ${data.parsedDate.toLocaleDateString('de-CH')}) konnte nicht gesendet werden.`);
+    Logger.log(`Details zum Fehler: ${error.message}`);
+    
+    // Erstellt einen Entwurf direkt im Thread als visuellen Nachweis im Test
+    if (thread) {
+      thread.createDraftReply(plainBody, {
+        htmlBody: `<b>[SYSTEM-NOTIZ: Mail-Limit erreicht - Entwurf generiert]</b><br><br>${htmlBody}`
+      });
+    }
+  }
 }
 
 function sendRejectionEmail(to, reason, thread) {
