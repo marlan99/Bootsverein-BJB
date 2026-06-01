@@ -333,7 +333,20 @@ function sendRejectionEmail(to, reason, thread) {
   const subject = 'Reservierung abgelehnt';
   const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\n❌ Grund: ${reason}\n\nBitte prüfe die Regeln und sende eine korrigierte Anfrage.`;
 
-  GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
+  try {
+    // Versuche die E-Mail normal zu versenden
+    GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
+  } catch (error) {
+    // Falls das Limit erreicht ist, fangen wir den Fehler hier ab
+    Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Ablehnung an ${to} konnte nicht gesendet werden.`);
+    Logger.log(`Details zum Fehler: ${error.message}`);
+    
+    // Optional: Füge dem Gmail-Thread trotzdem eine Notiz hinzu, 
+    // damit du im Postfach siehst, dass das Skript antworten wollte.
+    if (thread) {
+      thread.createDraftReply(`[SYSTEM-NOTIZ: Mail-Limit erreicht] Ablehnungsgrund: ${reason}`);
+    }
+  }
 }
 
 function getCurrentSeasonStart() {
