@@ -4,15 +4,16 @@
 // ===============================================
 
 const CONFIG = {
-  CALENDAR_ID: 'DEINE_KALENDER_ID', 
+  CALENDAR_ID: 'DEINE_KALENDER_ID', // <--- Hier die ID des Google Kalender eintragen
   GMAIL_LABEL: 'Reservierung/Neu',               
-  SHEET_CONFIG_ID: 'DEINE_CONFIG_SHEET_ID',      
+  SHEET_CONFIG_ID: 'DEINE_CONFIG_SHEET_ID', // <--- Hier die ID der Google Tabelle eintragen
+  SHEET_WHITELIST_NAME: 'Whitelist',       // <--- Name des Tabellenblatts mit den Mailadressen      
   SLOT_VORMITTAG: { start: '06:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
   JOKER_MAX_WEEKS: 6, // Maximal 6 Wochen in der Zukunft
   STANDARD_MAX_DAYS: 14,
   REMINDER_MINUTES: 1440, 
-  ADMIN_EMAIL: 'Bootsclub1890@gmail.com'
+  ADMIN_EMAIL: 'Bootsclub1890@gmail.com' // <--- Hier die korrekte Empfänger Mailadresse des Kalenders eintragen
 };
 
 function processReservationEmails() {
