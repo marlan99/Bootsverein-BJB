@@ -93,11 +93,14 @@ function testValidReservation() {
     body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Testlauf Hauptfunktion\nAnlass: Automatisierung`
   });
 
-  labelTestEmails();
+labelTestEmails();
   processReservationEmails(); 
 
+  // Holt deine Daten aus dem ersten Tabellenblatt
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
-  const myName = myProfile ? myProfile.name : 'Unbekannt';
+  // Falls du zum Testen eine Mailadresse nutzt, die nicht in der Liste steht, 
+  // nutzen wir deinen Google-Kontonamen als Fallback für den Kalender-Match
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
 
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   const events = calendar.getEventsForDay(new Date(testDate));
@@ -152,7 +155,7 @@ function testSlotTimes() {
   processReservationEmails();
 
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
-  const myName = myProfile ? myProfile.name : 'Unbekannt';
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
 
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   const events = calendar.getEventsForDay(new Date(testDate));
@@ -319,14 +322,14 @@ function cleanupOldTestMails() {
   Logger.log("   -> Mails nach 'Reservierung/Test-Archiv' verschoben.");
 
   try {
-    const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
     const start = new Date();
     const end = new Date();
     end.setDate(start.getDate() + 40); 
     
     const events = calendar.getEvents(start, end);
     const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
-    const myName = myProfile ? myProfile.name : 'Unbekannt';
+    const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
 
     let deletedCount = 0;
     events.forEach(e => {
