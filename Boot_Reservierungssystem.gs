@@ -326,7 +326,7 @@ function createCalendarEvent(data, userId) {
 }
 
 function sendConfirmationEmail(to, event, data, thread) {
-  const subject = 'Reservierung bestätigt: ' + event.getTitle();
+  const subject = 'Buchung bestätigt: ' + event.getTitle();
   
   const htmlBody = `
     Hallo ${data.name},<br><br>
@@ -362,7 +362,7 @@ function sendConfirmationEmail(to, event, data, thread) {
 }
 
 function sendRejectionEmail(to, reason, thread) {
-  const subject = 'Reservierung abgelehnt';
+  const subject = 'Buchung abgelehnt';
   const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\n❌ Grund: ${reason}\n\nBitte prüfe die Regeln und sende eine korrigierte Anfrage.`;
 
   try {
@@ -503,7 +503,7 @@ function executeCancellation(data, userId, thread, message) {
     thread.moveToArchive();
     Logger.log(`Termin erfolgreich storniert: ${terminTitel} für ${userId}`);
   } else {
-    GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `Hallo ${data.name},\n\nes konnte keine auf dich ausgestellte Reservierung für den ${data.parsedDate.toLocaleDateString('de-CH')} im Slot ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} gefunden werden.\n\nBitte prüfe deine Angaben oder wende dich an den Vorstand.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `Hallo ${data.name},\n\nes konnte keine auf dich ausgestellte Buchung für den ${data.parsedDate.toLocaleDateString('de-CH')} im Slot ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} gefunden werden.\n\nBitte prüfe deine Angaben oder wende dich an den Vorstand.`, { replyTo: CONFIG.ADMIN_EMAIL });
     message.markRead();
     
     const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
