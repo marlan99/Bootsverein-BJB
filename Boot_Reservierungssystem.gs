@@ -385,17 +385,27 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
 
+  // 1. Trigger für den E-Mail-Import (Jede Minute)
   ScriptApp.newTrigger('processReservationEmails')
     .timeBased()
     .everyMinutes(1)
     .create();
 
+  // 2. NEU: Trigger für die tägliche Erinnerung (Morgens zwischen 4 und 5 Uhr)
+  ScriptApp.newTrigger('sendDailyReservationReminders')
+    .timeBased()
+    .everyDays(1)
+    .atHour(4) // Startet das Zeitfenster um 4:00 Uhr morgens
+    .create();
+
+  // Ordner/Labels in Gmail sicherstellen
   ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt'].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) {
       GmailApp.createLabel(label);
     }
   });
-  Logger.log('Setup erfolgreich abgeschlossen.');
+  
+  Logger.log('Setup erfolgreich abgeschlossen. Beide Trigger wurden eingerichtet.');
 }
 
 function executeCancellation(data, userId, thread, message) {
