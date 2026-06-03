@@ -7,12 +7,10 @@ const CONFIG = {
   CALENDAR_ID: 'DEINE KALENDER ID', // <--- Hier die KALENDER ID eintragen
   GMAIL_LABEL: 'Reservierung/Neu',               
   SHEET_CONFIG_ID: 'DEINE GOOGLE SHEET ID', // <--- Hier die ID der Google Tabelle eintragen    
-  SHEET_WHITELIST_NAME: '24 Mitglieder - Motorboot', // <--- Name des Tabellenblatts mit den Mailadressen
   SLOT_VORMITTAG: { start: '06:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
   JOKER_MAX_WEEKS: 6, // Maximal 6 Wochen in der Zukunft
   STANDARD_MAX_DAYS: 14,
-  REMINDER_MINUTES: 1440, 
   ADMIN_EMAIL: 'Bootsclub1890@gmail.com'
 };
 
@@ -305,10 +303,6 @@ function createCalendarEvent(data, userId) {
       data.endTime,
       {
         description: description,
-        reminders: {
-          useDefault: false,
-          overrides: [{ method: 'email', minutes: CONFIG.REMINDER_MINUTES }]
-        }
       }
     );
 
@@ -522,10 +516,12 @@ function executeCancellation(data, userId, thread, message) {
 function getAuthorizedUserData(email) {
   try {
     const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
-    const sheet = ss.getSheetByName(CONFIG.SHEET_WHITELIST_NAME);
+    
+    // ÄNDERUNG: Holt automatisch das ERSTE Tabellenblatt (Index 0)
+    const sheet = ss.getSheets()[0]; 
     
     if (!sheet) {
-      Logger.log(`Fehler: Tabellenblatt "${CONFIG.SHEET_WHITELIST_NAME}" nicht gefunden.`);
+      Logger.log(`Fehler: Kein Tabellenblatt in der Datei gefunden.`);
       return null;
     }
     
@@ -547,7 +543,6 @@ function getAuthorizedUserData(email) {
       
       if (currentEmail === searchEmail) {
         // Person gefunden! 
-        // Falls Werte null/undefined sind, fangen wir das mit || '' ab
         const vorname = row[1] ? row[1].toString().trim() : '';
         const nachname = row[2] ? row[2].toString().trim() : '';
         
@@ -567,7 +562,7 @@ function getAuthorizedUserData(email) {
           nachname: nachname, // Spalte C: Name
           name: vollerName,   // Kombiniert ohne doppelte Leerzeichen
           email: row[3],      // Spalte D: E-Mail
-          mobile: mobile      // Spalte E: Mobile (garantiert ein String)
+          mobile: mobile      // Spalte E: Mobile
         };
       }
     }
