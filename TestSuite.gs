@@ -5,35 +5,60 @@
  */
 
 function runAllTests() {
+  Logger.log("=================================================================");
   Logger.log("=== START DER AUTOMATISIERTEN TESTSUITE ===");
+  Logger.log("=================================================================");
   const results = [];
   
-  // 1. Bereinigung vor dem Start
+  // -----------------------------------------------------------------
+  // TESTCASE 1
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 1,2,5 – Gültige Reservierung & Zusatzinfos");
   cleanupOldTestMails();
   results.push(testValidReservation());
 
-  // 2. Erneute Bereinigung, damit das 14-Tage-Limit für den nächsten Test wieder frei ist
+  // -----------------------------------------------------------------
+  // TESTCASE 2
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 3 – Standard-Limit (< 14 Tage)");
   cleanupOldTestMails();
   results.push(testStandardLimit());
 
-  // 3. Bereinigung, damit die Slots für die folgenden Tests frei sind
+  // -----------------------------------------------------------------
+  // TESTCASE 3
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)");
   cleanupOldTestMails();
   results.push(testSlotTimes());
 
+  // -----------------------------------------------------------------
+  // TESTCASE 4
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 9 – Intuitive Fehlermeldung bei Falschformat");
   cleanupOldTestMails();
   results.push(testInvalidFormat());
 
+  // -----------------------------------------------------------------
+  // TESTCASE 5
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 6 – Erinnerungsfunktion");
   cleanupOldTestMails();
   results.push(testReminder());
 
+  // -----------------------------------------------------------------
+  // TESTCASE 6
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 7 – Skalierungstest (Systemstabilität)");
   cleanupOldTestMails();
   results.push(testScalability());
 
-  // Auswertung & Zusammenfassung
+  // -----------------------------------------------------------------
+  // AUSWERTUNG & ZUSAMMENFASSUNG
+  // -----------------------------------------------------------------
   const passed = results.filter(r => r.passed).length;
   const total = results.length;
   
-  Logger.log("=========================================");
+  Logger.log("\n=========================================");
   Logger.log(`TEST-ERGEBNIS: ${passed}/${total} BESTANDEN`);
   Logger.log("=========================================");
   
@@ -50,7 +75,7 @@ function runAllTests() {
   // Ergebnis per E-Mail an den Admin senden
   if (CONFIG && CONFIG.ADMIN_EMAIL) {
     MailApp.sendEmail(CONFIG.ADMIN_EMAIL, `Testbericht Reservierungssystem: ${passed}/${total}`, emailBody);
-    Logger.log(`Testbericht an ${CONFIG.ADMIN_EMAIL} gesendet.`);
+    Logger.log(`\nTestbericht erfolgreich an ${CONFIG.ADMIN_EMAIL} gesendet.`);
   }
 }
 
@@ -71,7 +96,6 @@ function testValidReservation() {
   labelTestEmails();
   processReservationEmails(); 
 
-  // Überprüfung im Kalender
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
   const myName = myProfile ? myProfile.name : 'Unbekannt';
 
@@ -94,24 +118,20 @@ function testStandardLimit() {
   const date1 = getFutureDate(3);
   const date2 = getFutureDate(5); 
 
-  // 1. Erste gültige Mail
   createTestEmail({ body: `Datum: ${date1}\nSlot: Nachmittag\nTyp: Standard` });
   labelTestEmails();
   processReservationEmails();
 
-  // 2. Zweite Mail im Sperrzeitraum (muss abgelehnt werden)
   createTestEmail({ body: `Datum: ${date2}\nSlot: Vormittag\nTyp: Standard` });
   labelTestEmails();
   processReservationEmails();
 
   Utilities.sleep(2000); 
   
-  // Präzise Prüfung: Hat ein Thread das Label "Reservierung/Abgelehnt" erhalten?
   const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
   let passed = false;
   if (labelAbgelehnt) {
     const threads = labelAbgelehnt.getThreads(0, 10);
-    // Wenn sich im Abgelehnt-Label Mails befinden, griff die Sperre
     passed = threads.length > 0;
   }
 
@@ -165,7 +185,6 @@ function testInvalidFormat() {
 
   Utilities.sleep(2000);
   
-  // Prüfung über das Vorhandensein im "Abgelehnt"-Ordner
   const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
   const passed = labelAbgelehnt ? labelAbgelehnt.getThreads().length > 0 : false;
 
@@ -192,13 +211,11 @@ function testReminder() {
   const events = calendar.getEventsForDay(new Date(testDate));
   const event = events.find(e => e.getTitle().includes(myName));
 
-  // Tiefe Prüfung der Google-Kalender-Erinnerung
   let passed = false;
   let msg = 'Event wurde nicht angelegt.';
   
   if (event) {
     const emailReminders = event.getEmailReminders();
-    // Prüft, ob mindestens ein E-Mail-Reminder gesetzt ist und ob er mit CONFIG übereinstimmt (1440 Min)
     if (emailReminders.length > 0 && emailReminders[0] === CONFIG.REMINDER_MINUTES) {
       passed = true;
       msg = `Erinnerung ist exakt auf ${emailReminders[0]} Minuten (24h) vorab eingestellt.`;
@@ -220,7 +237,6 @@ function testReminder() {
 function testScalability() {
   const startTime = new Date();
   
-  // Sendet 5 Test-Mails nacheinander
   for (let i = 1; i <= 5; i++) { 
     const date = getFutureDate(20 + i);
     createTestEmail({
@@ -242,7 +258,6 @@ function testScalability() {
   const allEvents = calendar.getEvents(startTime, endDate);
   const loadEventsCount = allEvents.filter(e => e.getDescription().includes('Lasttest')).length;
   
-  // Da 1 Termin/2 Wochen gilt, geht nur 1 durch, 4 werden abgelehnt. System darf nicht abstürzen.
   const passed = durationInSeconds < 60;
 
   return {
@@ -255,7 +270,7 @@ function testScalability() {
 }
 
 /* ==========================================================================
-   HILFSFUNKTIONEN (UTILITIES) – OPTIMIERT
+   HILFSFUNKTIONEN (UTILITIES) – MIT TEST-ARCHIV LABELLING
    ========================================================================== */
 
 function getFutureDate(days) {
@@ -272,15 +287,12 @@ function createTestEmail({subject = 'Reservierung', body}) {
 }
 
 function labelTestEmails() {
-  // Erhöht auf 3,5 Sekunden, um Apps Script Zeit zu geben, die Mail im Postfach zu indexieren
   Utilities.sleep(3500); 
   const threads = GmailApp.search('is:unread from:me subject:"Reservierung"');
   const label = GmailApp.getUserLabelByName("Reservierung/Neu");
   
   if (label && threads.length > 0) {
     label.addToThreads(threads);
-    // CRITICAL FIX: Markiere die Threads NICHT als gelesen, da der Hauptcode sonst abbricht!
-    // GmailApp.markThreadsRead(threads); <-- Entfernt
   }
 }
 
@@ -289,55 +301,49 @@ function cleanupOldTestMails() {
   const labelErledigt = GmailApp.getUserLabelByName("Reservierung/Erledigt");
   const labelAbgelehnt = GmailApp.getUserLabelByName("Reservierung/Abgelehnt");
   
-  // Eigenes Label für die Test-Historie definieren und ggf. erstellen
   const archivLabelName = "Reservierung/Test-Archiv";
   let labelArchiv = GmailApp.getUserLabelByName(archivLabelName);
   if (!labelArchiv) {
     labelArchiv = GmailApp.createLabel(archivLabelName);
-    Logger.log(`Label '${archivLabelName}' wurde neu erstellt.`);
   }
   
-  // Suche nach allen relevanten Test-Mails von dir selbst
   const threads = GmailApp.search('from:me "Reservierung" OR "stornierung" OR "Buchung"');
   
   threads.forEach(thread => {
-    // 1. Entferne die operativen Labels, damit der Hauptcode sie nicht mehr beachtet
     if(labelNeu) labelNeu.removeFromThread(thread);
     if(labelErledigt) labelErledigt.removeFromThread(thread);
     if(labelAbgelehnt) labelAbgelehnt.removeFromThread(thread);
     
-    // 2. Füge das Test-Archiv-Label hinzu
     labelArchiv.addToThreads([thread]);
-    
-    // 3. Aus dem Posteingang entfernen (archivieren) und als gelesen markieren,
-    // damit das Postfach während der Tests sauber bleibt.
     thread.moveToArchive();
     thread.markRead();
   });
   
-  Logger.log(`Alte Test-Mails wurden bereinigt und nach '${archivLabelName}' verschoben.`);
+  Logger.log("   -> Mails nach 'Reservierung/Test-Archiv' verschoben.");
 
-  // Kalender-Events der Testsuite entfernen, um Limits zurückzusetzen
   try {
     const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
     const start = new Date();
     const end = new Date();
-    end.setDate(start.getDate() + 40); // Suchfenster für Testtermine
+    end.setDate(start.getDate() + 40); 
     
     const events = calendar.getEvents(start, end);
     const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
     const myName = myProfile ? myProfile.name : 'Unbekannt';
 
+    let deletedCount = 0;
     events.forEach(e => {
-      // Lösche nur Termine, die eindeutig der Testsuite zuzuordnen sind
       if (e.getTitle().includes(myName) || e.getDescription().includes('Lasttest')) {
         e.deleteEvent();
+        deletedCount++;
       }
     });
-    Logger.log("Alte Test-Kalendereinträge bereinigt.");
+    if (deletedCount > 0) {
+      Logger.log(`   -> ${deletedCount} alte(s) Test-Kalenderevent(s) gelöscht.`);
+    }
   } catch(e) {
-    Logger.log("Hinweis bei Kalenderbereinigung: " + e.message);
+    Logger.log("   -> Hinweis bei Kalenderbereinigung: " + e.message);
   }
   
-  Utilities.sleep(2000); // Kurze Pause für die Server-Synchronisation
+  Utilities.sleep(2000); 
 }
