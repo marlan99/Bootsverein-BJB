@@ -101,7 +101,7 @@ function testStandardLimit() {
   Utilities.sleep(2000); 
   // Da kein Name mehr im Body steht, suchen wir nach der Ablehnung im Betreff und deiner Mail
   const myEmail = Session.getActiveUser().getEmail();
-  const threads = GmailApp.search(`subject:"Reservierung abgelehnt" to:${myEmail}`);
+  const threads = GmailApp.search(`subject:"Buchung abgelehnt" to:${myEmail}`);
   const passed = threads.length > 0;
 
   return {
@@ -154,7 +154,7 @@ function testInvalidFormat() {
 
   Utilities.sleep(2000);
   const myEmail = Session.getActiveUser().getEmail();
-  const threads = GmailApp.search(`subject:"Reservierung abgelehnt" to:${myEmail}`);
+  const threads = GmailApp.search(`subject:"Buchung abgelehnt" to:${myEmail}`);
   const passed = threads.length > 0;
 
   return {
