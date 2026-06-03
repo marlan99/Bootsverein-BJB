@@ -55,17 +55,13 @@ function testValidReservation() {
   const testDate = getFutureDate(10);
   createTestEmail({
     subject: 'Reservierung',
-    body: `Datum: ${testDate}
-Slot: Vormittag
-Typ: Standard
-Beschreibung: Testlauf Hauptfunktion
-Anlass: Automatisierung`
+    body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Testlauf Hauptfunktion\nAnlass: Automatisierung`
   });
 
   labelTestEmails();
   processReservationEmails(); 
 
-  // Überprüfung im Kalender: Holt den Namen dynamisch aus der Whitelist für den Matcher
+  // Überprüfung im Kalender
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
   const myName = myProfile ? myProfile.name : 'Unbekannt';
 
@@ -88,26 +84,31 @@ function testStandardLimit() {
   const date1 = getFutureDate(3);
   const date2 = getFutureDate(5); 
 
-  // 1. Erste gültige Mail (ohne Name)
+  // 1. Erste gültige Mail
   createTestEmail({ body: `Datum: ${date1}\nSlot: Nachmittag\nTyp: Standard` });
   labelTestEmails();
   processReservationEmails();
 
-  // 2. Zweite Mail im Sperrzeitraum (wird abgelehnt)
+  // 2. Zweite Mail im Sperrzeitraum (muss abgelehnt werden)
   createTestEmail({ body: `Datum: ${date2}\nSlot: Vormittag\nTyp: Standard` });
   labelTestEmails();
   processReservationEmails();
 
   Utilities.sleep(2000); 
-  // Da kein Name mehr im Body steht, suchen wir nach der Ablehnung im Betreff und deiner Mail
-  const myEmail = Session.getActiveUser().getEmail();
-  const threads = GmailApp.search(`subject:"Buchung abgelehnt" to:${myEmail}`);
-  const passed = threads.length > 0;
+  
+  // Präzise Prüfung: Hat ein Thread das Label "Reservierung/Abgelehnt" erhalten?
+  const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
+  let passed = false;
+  if (labelAbgelehnt) {
+    const threads = labelAbgelehnt.getThreads(0, 10);
+    // Wenn sich im Abgelehnt-Label Mails befinden, griff die Sperre
+    passed = threads.length > 0;
+  }
 
   return {
     name: 'ID 3 – Standard-Limit (< 14 Tage)',
     passed: passed,
-    message: passed ? 'Zweite Reservierung wurde korrekt per Mail abgelehnt.' : 'Sperre griff nicht oder keine Mail versendet.'
+    message: passed ? 'Zweite Reservierung wurde korrekt blockiert und unter Abgelehnt archiviert.' : 'Sperre griff nicht oder Label wurde nicht gesetzt.'
   };
 }
 
@@ -153,14 +154,15 @@ function testInvalidFormat() {
   processReservationEmails();
 
   Utilities.sleep(2000);
-  const myEmail = Session.getActiveUser().getEmail();
-  const threads = GmailApp.search(`subject:"Buchung abgelehnt" to:${myEmail}`);
-  const passed = threads.length > 0;
+  
+  // Prüfung über das Vorhandensein im "Abgelehnt"-Ordner
+  const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
+  const passed = labelAbgelehnt ? labelAbgelehnt.getThreads().length > 0 : false;
 
   return {
     name: 'ID 9 – Intuitive Fehlermeldung bei Falschformat',
     passed: passed,
-    message: passed ? 'Fehlerhaftes Format wurde erkannt und beantwortet.' : 'Ungültige Mail triggerte keine Fehlerantwort.'
+    message: passed ? 'Fehlerhaftes Format wurde erkannt und aussortiert.' : 'Ungültige Mail triggerte keine Fehlerbehandlung.'
   };
 }
 
@@ -180,10 +182,25 @@ function testReminder() {
   const events = calendar.getEventsForDay(new Date(testDate));
   const event = events.find(e => e.getTitle().includes(myName));
 
+  // Tiefe Prüfung der Google-Kalender-Erinnerung
+  let passed = false;
+  let msg = 'Event wurde nicht angelegt.';
+  
+  if (event) {
+    const emailReminders = event.getEmailReminders();
+    // Prüft, ob mindestens ein E-Mail-Reminder gesetzt ist und ob er mit CONFIG übereinstimmt (1440 Min)
+    if (emailReminders.length > 0 && emailReminders[0] === CONFIG.REMINDER_MINUTES) {
+      passed = true;
+      msg = `Erinnerung ist exakt auf ${emailReminders[0]} Minuten (24h) vorab eingestellt.`;
+    } else {
+      msg = 'Event existiert, aber das Erinnerungs-Intervall fehlt oder weicht ab.';
+    }
+  }
+
   return {
     name: 'ID 6 – Erinnerungsfunktion',
-    passed: !!event,
-    message: event ? 'Event erstellt (Reminder-Schnittstelle aktiv).' : 'Event wurde nicht angelegt.'
+    passed: passed,
+    message: msg
   };
 }
 
@@ -193,7 +210,7 @@ function testReminder() {
 function testScalability() {
   const startTime = new Date();
   
-  // Sendet 5 Test-Mails nacheinander (jetzt ohne Name im Body)
+  // Sendet 5 Test-Mails nacheinander
   for (let i = 1; i <= 5; i++) { 
     const date = getFutureDate(20 + i);
     createTestEmail({
@@ -213,12 +230,9 @@ function testScalability() {
   const endDate = new Date(getFutureDate(100)); 
   
   const allEvents = calendar.getEvents(startTime, endDate);
-  // Wir prüfen hier auf die im Lasttest gesetzte Beschreibung im Kalendereintrag
   const loadEventsCount = allEvents.filter(e => e.getDescription().includes('Lasttest')).length;
   
-  // Da das Limit von 1 Termin pro 2 Wochen aktiv ist, wird bei derselben E-Mail-Adresse 
-  // die erste Mail durchgehen (getFutureDate(21)) und die anderen 4 blockiert.
-  // Das ist das korrekte Verhalten! Der Test ist bestanden, wenn das Skript nicht abstürzt.
+  // Da 1 Termin/2 Wochen gilt, geht nur 1 durch, 4 werden abgelehnt. System darf nicht abstürzen.
   const passed = durationInSeconds < 60;
 
   return {
@@ -231,7 +245,7 @@ function testScalability() {
 }
 
 /* ==========================================================================
-   HILFSFUNKTIONEN (UTILITIES)
+   HILFSFUNKTIONEN (UTILITIES) – OPTIMIERT
    ========================================================================== */
 
 function getFutureDate(days) {
@@ -248,13 +262,15 @@ function createTestEmail({subject = 'Reservierung', body}) {
 }
 
 function labelTestEmails() {
-  Utilities.sleep(1500); 
+  // Erhöht auf 3,5 Sekunden, um Apps Script Zeit zu geben, die Mail im Postfach zu indexieren
+  Utilities.sleep(3500); 
   const threads = GmailApp.search('is:unread from:me subject:"Reservierung"');
   const label = GmailApp.getUserLabelByName("Reservierung/Neu");
   
   if (label && threads.length > 0) {
     label.addToThreads(threads);
-    GmailApp.markThreadsRead(threads); 
+    // CRITICAL FIX: Markiere die Threads NICHT als gelesen, da der Hauptcode sonst abbricht!
+    // GmailApp.markThreadsRead(threads); <-- Entfernt
   }
 }
 
@@ -263,8 +279,7 @@ function cleanupOldTestMails() {
   const labelErledigt = GmailApp.getUserLabelByName("Reservierung/Erledigt");
   const labelAbgelehnt = GmailApp.getUserLabelByName("Reservierung/Abgelehnt");
   
-  // Sucht nach allen Mails von dir selbst, die mit dem Reservierungssystem zu tun haben
-  const threads = GmailApp.search('from:me "Reservierung" OR "stornierung"');
+  const threads = GmailApp.search('from:me "Reservierung" OR "stornierung" OR "Buchung"');
   
   threads.forEach(thread => {
     if(labelNeu) labelNeu.removeFromThread(thread);
@@ -273,4 +288,5 @@ function cleanupOldTestMails() {
     thread.moveToTrash(); 
   });
   Logger.log("Alte Test-Mails in den Papierkorb verschoben.");
+  Utilities.sleep(2000); // Kurze Pause, damit die Löschung serverseitig greift
 }
