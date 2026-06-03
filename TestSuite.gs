@@ -288,5 +288,28 @@ function cleanupOldTestMails() {
     thread.moveToTrash(); 
   });
   Logger.log("Alte Test-Mails in den Papierkorb verschoben.");
-  Utilities.sleep(2000); // Kurze Pause, damit die Löschung serverseitig greift
+
+  // NEU: Kalender-Events der Testsuite entfernen, um Limits zurückzusetzen
+  try {
+    const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+    const start = new Date();
+    const end = new Date();
+    end.setDate(start.getDate() + 40); // Suchfenster für Testtermine
+    
+    const events = calendar.getEvents(start, end);
+    const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
+    const myName = myProfile ? myProfile.name : 'Unbekannt';
+
+    events.forEach(e => {
+      // Lösche nur Termine, die eindeutig der Testsuite zuzuordnen sind
+      if (e.getTitle().includes(myName) || e.getDescription().includes('Lasttest')) {
+        e.deleteEvent();
+      }
+    });
+    Logger.log("Alte Test-Kalendereinträge bereinigt.");
+  } catch(e) {
+    Logger.log("Hinweis bei Kalenderbereinigung: " + e.message);
+  }
+  
+  Utilities.sleep(2000); 
 }
