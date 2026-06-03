@@ -289,17 +289,35 @@ function cleanupOldTestMails() {
   const labelErledigt = GmailApp.getUserLabelByName("Reservierung/Erledigt");
   const labelAbgelehnt = GmailApp.getUserLabelByName("Reservierung/Abgelehnt");
   
+  // Eigenes Label für die Test-Historie definieren und ggf. erstellen
+  const archivLabelName = "Reservierung/Test-Archiv";
+  let labelArchiv = GmailApp.getUserLabelByName(archivLabelName);
+  if (!labelArchiv) {
+    labelArchiv = GmailApp.createLabel(archivLabelName);
+    Logger.log(`Label '${archivLabelName}' wurde neu erstellt.`);
+  }
+  
+  // Suche nach allen relevanten Test-Mails von dir selbst
   const threads = GmailApp.search('from:me "Reservierung" OR "stornierung" OR "Buchung"');
   
   threads.forEach(thread => {
+    // 1. Entferne die operativen Labels, damit der Hauptcode sie nicht mehr beachtet
     if(labelNeu) labelNeu.removeFromThread(thread);
     if(labelErledigt) labelErledigt.removeFromThread(thread);
     if(labelAbgelehnt) labelAbgelehnt.removeFromThread(thread);
-    thread.moveToTrash(); 
+    
+    // 2. Füge das Test-Archiv-Label hinzu
+    labelArchiv.addToThreads([thread]);
+    
+    // 3. Aus dem Posteingang entfernen (archivieren) und als gelesen markieren,
+    // damit das Postfach während der Tests sauber bleibt.
+    thread.moveToArchive();
+    thread.markRead();
   });
-  Logger.log("Alte Test-Mails in den Papierkorb verschoben.");
+  
+  Logger.log(`Alte Test-Mails wurden bereinigt und nach '${archivLabelName}' verschoben.`);
 
-  // NEU: Kalender-Events der Testsuite entfernen, um Limits zurückzusetzen
+  // Kalender-Events der Testsuite entfernen, um Limits zurückzusetzen
   try {
     const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
     const start = new Date();
@@ -321,5 +339,5 @@ function cleanupOldTestMails() {
     Logger.log("Hinweis bei Kalenderbereinigung: " + e.message);
   }
   
-  Utilities.sleep(2000); 
+  Utilities.sleep(2000); // Kurze Pause für die Server-Synchronisation
 }
