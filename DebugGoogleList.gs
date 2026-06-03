@@ -1,7 +1,7 @@
 function debugSpecificWhitelistEmail() {
   // ==========================================
   // HIER DIE ZU PRÜFENDE E-MAIL EINTRAGEN:
-  const testEmail = "test.user@juliusbaer.com"; 
+  const testEmail = "Bootsclub1890@gmail.com"; 
   // ==========================================
 
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
