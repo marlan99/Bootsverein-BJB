@@ -326,7 +326,7 @@ function sendConfirmationEmail(to, event, data, thread) {
     Hallo ${data.name},<br><br>
     dein Termin wurde erfolgreich eingetragen:<br><br>
     &#128197; <b>Datum:</b> ${data.parsedDate.toLocaleDateString('de-CH')}<br>
-    &#23F0; <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br>
+    &#9200; <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br>
     &#127991; <b>Typ:</b> ${data.type === 'joker' ? 'Joker' : 'Standard'}<br><br>
     Du erhältst 1 Tag vorher eine Erinnerung per E-Mail.<br><br>
     Vielen Dank!<br>
