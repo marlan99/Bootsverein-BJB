@@ -196,38 +196,35 @@ function testInvalidFormat() {
 }
 
 /**
- * ID 6: Prüft, ob standardmäßig eine Erinnerung 24 Stunden vorher aktiv ist
+ * ID 6: Prüft die automatisierte E-Mail-Erinnerung für den Folgetag
  */
 function testReminder() {
-  const testDate = getFutureDate(15);
-  createTestEmail({ body: `Datum: ${testDate}\nSlot: Nachmittag\nTyp: Standard` });
-  labelTestEmails();
-  processReservationEmails();
-
-  const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
-  const myName = myProfile ? myProfile.name : 'Unbekannt';
-
-  const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
-  const events = calendar.getEventsForDay(new Date(testDate));
-  const event = events.find(e => e.getTitle().includes(myName));
-
-  let passed = false;
-  let msg = 'Event wurde nicht angelegt.';
+  // 1. Erstelle eine reguläre Reservierung für MORGEN
+  const tomorrowDate = getFutureDate(1);
   
-  if (event) {
-    const emailReminders = event.getEmailReminders();
-    if (emailReminders.length > 0 && emailReminders[0] === CONFIG.REMINDER_MINUTES) {
-      passed = true;
-      msg = `Erinnerung ist exakt auf ${emailReminders[0]} Minuten (24h) vorab eingestellt.`;
-    } else {
-      msg = 'Event existiert, aber das Erinnerungs-Intervall fehlt oder weicht ab.';
-    }
-  }
+  createTestEmail({ 
+    body: `Datum: ${tomorrowDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Testlauf Erinnerung` 
+  });
+  
+  labelTestEmails();
+  processReservationEmails(); // Hauptcode erstellt das Event inklusive "Kontakt: deine-mail@..."
+
+  // 2. Trigger die Erinnerungs-Funktion manuell für den Testfall
+  sendDailyReservationReminders();
+  
+  // Kurze Pause, damit Gmail Zeit hat, die gesendete Mail im Postfach zu registrieren
+  Utilities.sleep(3500);
+  
+  // 3. Überprüfung: Kam die Erinnerungs-Mail bei dir an?
+  const threads = GmailApp.search(`subject:"Erinnerung: Deine Boot-Reservierung für morgen!" to:me`);
+  const passed = threads.length > 0;
 
   return {
-    name: 'ID 6 – Erinnerungsfunktion',
+    name: 'ID 6 – Erinnerungsfunktion (E-Mail an Buchenden)',
     passed: passed,
-    message: msg
+    message: passed 
+      ? 'Erinnerungs-E-Mail wurde erfolgreich generiert und an den Buchenden zugestellt.' 
+      : 'Es wurde keine Erinnerungs-E-Mail im Postfach gefunden.'
   };
 }
 
