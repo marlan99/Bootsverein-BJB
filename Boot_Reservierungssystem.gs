@@ -332,7 +332,7 @@ function sendConfirmationEmail(to, event, data, thread) {
     Hallo ${data.name},<br><br>
     dein Termin wurde erfolgreich eingetragen:<br><br>
     &#128197; <b>Datum:</b> ${data.parsedDate.toLocaleDateString('de-CH')}<br>
-    &#9200; <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br>
+    &#23F0; <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br>
     &#127991; <b>Typ:</b> ${data.type === 'joker' ? 'Joker' : 'Standard'}<br><br>
     Du erhältst 1 Tag vorher eine Erinnerung per E-Mail.<br><br>
     Vielen Dank!<br>
@@ -577,4 +577,52 @@ function getAuthorizedUserData(email) {
     Logger.log('Fehler beim Einlesen der Mitgliederdaten: ' + e.message);
     return null;
   }
+}
+
+/**
+ * Prüft den Kalender nach Terminen für den Folgetag und sendet E-Mail-Erinnerungen
+ * an die buchenden Mitglieder anhand des Eintrags "Kontakt: E-Mail".
+ */
+function sendDailyReservationReminders() {
+  Logger.log("=== STARTE TÄGLICHE ERINNERUNGS-PRÜFUNG ===");
+  
+  const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+  
+  // Berechne den morgigen Tag (Start: 00:00 Uhr, Ende: 23:59 Uhr)
+  const tomorrowStart = new Date();
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  tomorrowStart.setHours(0, 0, 0, 0);
+  
+  const tomorrowEnd = new Date();
+  tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
+  tomorrowEnd.setHours(23, 59, 59, 999);
+  
+  // Alle Events für morgen holen
+  const events = calendar.getEvents(tomorrowStart, tomorrowEnd);
+  Logger.log(`${events.length} Termine für morgen gefunden.`);
+  
+  events.forEach(event => {
+    const description = event.getDescription() || "";
+    
+    // REGEX-MATCH: Sucht nach "Kontakt: " gefolgt von einer E-Mail-Adresse
+    const emailMatch = description.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+    
+    if (emailMatch && emailMatch[1]) {
+      const memberEmail = emailMatch[1].trim();
+      const slotName = event.getStartTime().getHours() === 6 ? "Vormittag (06:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
+      
+      const subject = `Erinnerung: Deine Boot-Reservierung für morgen!`;
+      let body = `Hallo!\n\nDies ist die automatische Erinnerung für deine anstehende Reservierung:\n\n`;
+      body += `\u{1F4C5} Datum: ${tomorrowStart.toLocaleDateString('de-CH')}\n`;
+      body += `\u{23F0} Slot: ${slotName}\n\n`;
+      body += `Viel Spass auf dem Wasser!\n\nDein Vorstand`;
+      
+      MailApp.sendEmail(memberEmail, subject, body);
+      Logger.log(`   -> Erinnerung erfolgreich an ${memberEmail} gesendet.`);
+    } else {
+      Logger.log(`   -> Kein gültiger 'Kontakt:'-Eintrag im Event '${event.getTitle()}' gefunden.`);
+    }
+  });
+  
+  Logger.log("=== ERINNERUNGS-PRÜFUNG BEENDET ===");
 }
