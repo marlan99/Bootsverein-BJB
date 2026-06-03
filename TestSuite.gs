@@ -8,15 +8,25 @@ function runAllTests() {
   Logger.log("=== START DER AUTOMATISIERTEN TESTSUITE ===");
   const results = [];
   
-  // Bereinige alte Test-Mails vor dem Start, um Fehlalarme zu vermeiden
+  // 1. Bereinigung vor dem Start
   cleanupOldTestMails();
-
-  // Testfälle nacheinander ausführen
   results.push(testValidReservation());
+
+  // 2. Erneute Bereinigung, damit das 14-Tage-Limit für den nächsten Test wieder frei ist
+  cleanupOldTestMails();
   results.push(testStandardLimit());
+
+  // 3. Bereinigung, damit die Slots für die folgenden Tests frei sind
+  cleanupOldTestMails();
   results.push(testSlotTimes());
+
+  cleanupOldTestMails();
   results.push(testInvalidFormat());
+
+  cleanupOldTestMails();
   results.push(testReminder());
+
+  cleanupOldTestMails();
   results.push(testScalability());
 
   // Auswertung & Zusammenfassung
