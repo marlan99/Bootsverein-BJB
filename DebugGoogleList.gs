@@ -5,10 +5,13 @@ function debugSpecificWhitelistEmail() {
   // ==========================================
 
   const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
-  const sheet = ss.getSheetByName(CONFIG.SHEET_WHITELIST_NAME);
+  
+  // ÄNDERUNG 1: Holt automatisch das ERSTE Tabellenblatt (Index 0) statt über den Namen
+  const sheet = ss.getSheets()[0];
   
   if (!sheet) {
-    Logger.log(`❌ FEHLER: Tabellenblatt "${CONFIG.SHEET_WHITELIST_NAME}" wurde nicht gefunden.`);
+    // ÄNDERUNG 2: Log-Nachricht angepasst, da SHEET_WHITELIST_NAME nicht mehr existiert
+    Logger.log(`❌ FEHLER: Kein Tabellenblatt in der Datei gefunden.`);
     return;
   }
   
@@ -22,6 +25,7 @@ function debugSpecificWhitelistEmail() {
   const searchEmail = testEmail.trim().toLowerCase();
   
   Logger.log(`Gesuchte E-Mail-Adresse: "${searchEmail}"`);
+  Logger.log(`Untersuchtes Tabellenblatt: "${sheet.getName()}"`); // Zeigt im Log den echten Namen des ersten Blatts an
   Logger.log("--- Start Tabellen-Scan ---");
   
   let gefunden = false;
