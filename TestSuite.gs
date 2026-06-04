@@ -51,21 +51,28 @@ function runAllTests() {
   results.push(testReminder());
 
   // -----------------------------------------------------------------
-  // TESTCASE 6: Erfolgreiche Stornierung (NEU)
+  // TESTCASE 6: Erfolgreiche Stornierung
   // -----------------------------------------------------------------
   Logger.log("\n[START] Testcase: ID 10 – Erfolgreiche Stornierung (Frist eingehalten)");
   cleanupOldTestMails();
   results.push(testSuccessfulCancellation());
 
   // -----------------------------------------------------------------
-  // TESTCASE 7: Abgelehnte Stornierung (NEU)
+  // TESTCASE 7: Abgelehnte Stornierung
   // -----------------------------------------------------------------
   Logger.log("\n[START] Testcase: ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)");
   cleanupOldTestMails();
   results.push(testRejectedCancellation());
 
   // -----------------------------------------------------------------
-  // TESTCASE 8: Skalierungstest (OPTIONAL)
+  // TESTCASE 8: Europäische Datumsformate (NEU angepasst)
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 12 – Flexibles europäisches Datums-Parsing");
+  cleanupOldTestMails();
+  results.push(testEuropeanDateFormats());
+
+  // -----------------------------------------------------------------
+  // TESTCASE 9: Skalierungstest (OPTIONAL)
   // -----------------------------------------------------------------
   if (TEST_CONFIG.RUN_SCALABILITY_TEST) {
     Logger.log("\n[START] Testcase: ID 7 – Skalierungstest (Systemstabilität)");
@@ -110,7 +117,7 @@ function runAllTests() {
  * ID 1, 2, 5: Prüft die gültige Verarbeitung eines Standard-Templates
  */
 function testValidReservation() {
-  const testDate = getFutureDate(10);
+  const testDate = getFutureDate(10, 'DOT_LEAD');
   createTestEmail({
     subject: 'Reservierung',
     body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Testlauf Hauptfunktion\nAnlass: Automatisierung`
@@ -123,7 +130,6 @@ function testValidReservation() {
   const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
 
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
-  // Datumsobjekt für die Suche parsen
   const parts = testDate.split('.');
   const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
   const events = calendar.getEventsForDay(parsedDate);
@@ -141,8 +147,8 @@ function testValidReservation() {
  * ID 3: Prüft die Sperre von zwei Standard-Terminen innerhalb von 14 Tagen
  */
 function testStandardLimit() {
-  const date1 = getFutureDate(3);
-  const date2 = getFutureDate(5); 
+  const date1 = getFutureDate(3, 'DOT_LEAD');
+  const date2 = getFutureDate(5, 'DOT_LEAD'); 
 
   createTestEmail({ body: `Datum: ${date1}\nSlot: Nachmittag\nTyp: Standard` });
   labelTestEmails();
@@ -172,7 +178,7 @@ function testStandardLimit() {
  * ID 8: Prüft die korrekte Uhrzeitsetzung für VM (6-14) und NM (14-20)
  */
 function testSlotTimes() {
-  const testDate = getFutureDate(12);
+  const testDate = getFutureDate(12, 'DOT_LEAD');
   createTestEmail({ body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard` });
   labelTestEmails();
   processReservationEmails();
@@ -227,7 +233,7 @@ function testInvalidFormat() {
  * ID 6: Prüft die automatisierte E-Mail-Erinnerung für den Folgetag
  */
 function testReminder() {
-  const tomorrowDate = getFutureDate(1);
+  const tomorrowDate = getFutureDate(1, 'DOT_LEAD');
   
   createTestEmail({ 
     body: `Datum: ${tomorrowDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Testlauf Erinnerung` 
@@ -256,20 +262,18 @@ function testReminder() {
  * ID 10: Prüft eine erfolgreiche Stornierung weit im Voraus (Frist eingehalten)
  */
 function testSuccessfulCancellation() {
-  const targetDate = getFutureDate(4); // 4 Tage in der Zukunft (Frist 24h locker eingehalten)
+  const targetDate = getFutureDate(4, 'DOT_LEAD'); 
   
-  // 1. Erst buchen
   createTestEmail({ body: `Datum: ${targetDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Wird storniert` });
   labelTestEmails();
   processReservationEmails();
   
-  // 2. Stornierungs-Mail senden
   createTestEmail({ 
     subject: 'Stornierung Boot', 
     body: `Datum: ${targetDate}\nSlot: Nachmittag` 
   });
   labelTestEmails();
-  processReservationEmails(); // Verarbeitet Stornierung
+  processReservationEmails(); 
   
   Utilities.sleep(2000);
 
@@ -282,7 +286,6 @@ function testSuccessfulCancellation() {
   const events = calendar.getEventsForDay(parsedDate);
   const event = events.find(e => e.getTitle().includes(myName));
   
-  // Bestanden, wenn kein Kalendereintrag mehr existiert
   const passed = !event;
 
   return {
@@ -298,14 +301,12 @@ function testSuccessfulCancellation() {
  * ID 11: Prüft die Ablehnung einer Stornierung am selben Tag (Frist verletzt)
  */
 function testRejectedCancellation() {
-  const todayDate = getFutureDate(0); // Heute buchen & stornieren versuchen -> Verletzt die 24h-Frist
+  const todayDate = getFutureDate(0, 'DOT_LEAD'); 
   
-  // 1. Provisorisch für heute buchen
   createTestEmail({ body: `Datum: ${todayDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Kurzfrist-Test` });
   labelTestEmails();
   processReservationEmails();
   
-  // 2. Sofort stornieren versuchen
   createTestEmail({ 
     subject: 'Absage Termin', 
     body: `Datum: ${todayDate}\nSlot: Nachmittag` 
@@ -328,13 +329,71 @@ function testRejectedCancellation() {
 }
 
 /**
+ * ID 12: Prüft europäische Datumsformate auf erfolgreiche Erkennung
+ */
+function testEuropeanDateFormats() {
+  const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+  const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
+  
+  // Testet verschiedene typisch europäische Schreibweisen an unterschiedlichen Tagen im Kalender
+  const formatsToTest = [
+    { type: 'DOT_LEAD',   daysOut: 15, desc: '05.06.2026 (Mit führenden Nullen)' },
+    { type: 'DOT_NO_LEAD', daysOut: 16, desc: '5.6.2026 (Ohne führende Nullen)' },
+    { type: 'EU_SLASH',   daysOut: 17, desc: '5/6/2026 (EU-Schrägstrich Tag/Monat/Jahr)' },
+    { type: 'DE_TEXT',    daysOut: 18, desc: '5. Juni 2026 (Textmonat mit Punkt)' }
+  ];
+  
+  let successfulParses = 0;
+  
+  formatsToTest.forEach(item => {
+    const formattedDateString = getFutureDate(item.daysOut, item.type);
+    
+    // 1. Sende E-Mail mit dem jeweiligen europäisch formatierten Datum
+    createTestEmail({
+      subject: 'Reservierung',
+      body: `Datum: ${formattedDateString}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Europäisches Format-Test ${item.type}`
+    });
+    labelTestEmails();
+    processReservationEmails();
+    Utilities.sleep(1500);
+    
+    // 2. Prüfe, ob das Event am präzisen Zieltag eingetragen wurde
+    const targetDateObj = new Date();
+    targetDateObj.setDate(targetDateObj.getDate() + item.daysOut);
+    
+    const events = calendar.getEventsForDay(targetDateObj);
+    const event = events.find(e => e.getTitle().includes(myName) && e.getDescription().includes(item.type));
+    
+    if (event) {
+      successfulParses++;
+    } else {
+      Logger.log(`   -> [FEHLER] Europäisches Format fehlgeschlagen: "${item.desc}" mit generiertem Text: '${formattedDateString}'`);
+    }
+    
+    // Aufräumen für den nächsten Formattest
+    if (event) event.deleteEvent();
+  });
+  
+  const passed = (successfulParses === formatsToTest.length);
+  
+  return {
+    name: 'ID 12 – Europäische Datumsformate',
+    passed: passed,
+    message: passed 
+      ? `Alle ${formatsToTest.length} europäischen Formate (Punkte, Ohne Null, Schrägstrich, Textmonat) wurden erfolgreich verarbeitet.` 
+      : `${successfulParses} von ${formatsToTest.length} europäischen Formaten wurden korrekt erkannt.`
+  };
+}
+
+/**
  * ID 7: Simuliert Last durch gleichzeitige Benutzeranfragen
  */
 function testScalability() {
   const startTime = new Date();
   
   for (let i = 1; i <= 5; i++) { 
-    const date = getFutureDate(20 + i);
+    const date = getFutureDate(20 + i, 'DOT_LEAD');
     createTestEmail({
       body: `Datum: ${date}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Lasttest ${i}`
     });
@@ -350,8 +409,7 @@ function testScalability() {
   
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   
-  // Datum für das Ende des Suchbereichs parsen
-  const maxDateStr = getFutureDate(100);
+  const maxDateStr = getFutureDate(100, 'DOT_LEAD');
   const parts = maxDateStr.split('.');
   const endDate = new Date(parts[2], parts[1] - 1, parts[0]);
   
@@ -374,15 +432,34 @@ function testScalability() {
    ========================================================================== */
 
 /**
- * Generiert ein Zukunftsdatum direkt im neuen Format DD.MM.YYYY
+ * Generiert ein Zukunftsdatum basierend auf dem gewünschten Formattyp
+ * @param {number} days - Tage in der Zukunft
+ * @param {string} format - Typ des Datumsformats
  */
-function getFutureDate(days) {
+function getFutureDate(days, format) {
   const d = new Date();
   d.setDate(d.getDate() + days);
+  
   const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${day}.${month}.${year}`; // Geändert auf DD.MM.YYYY
+  const monthNum = d.getMonth() + 1;
+  const dayNum = d.getDate();
+  
+  const monthLead = String(monthNum).padStart(2, '0');
+  const dayLead = String(dayNum).padStart(2, '0');
+  
+  const deMonths = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+
+  switch(format) {
+    case 'DOT_NO_LEAD':
+      return `${dayNum}.${monthNum}.${year}`; // z.B. 5.6.2026
+    case 'EU_SLASH':
+      return `${dayNum}/${monthNum}/${year}`; // z.B. 5/6/2026
+    case 'DE_TEXT':
+      return `${dayNum}. ${deMonths[d.getMonth()]} ${year}`; // z.B. 5. Juni 2026
+    case 'DOT_LEAD':
+    default:
+      return `${dayLead}.${monthLead}.${year}`; // z.B. 05.06.2026
+  }
 }
 
 function createTestEmail({subject = 'Reservierung', body}) {
@@ -436,7 +513,7 @@ function cleanupOldTestMails() {
 
     let deletedCount = 0;
     events.forEach(e => {
-      if (e.getTitle().includes(myName) || e.getDescription().includes('Lasttest') || e.getDescription().includes('Kurzfrist-Test') || e.getDescription().includes('Wird storniert')) {
+      if (e.getTitle().includes(myName) || e.getDescription().includes('Lasttest') || e.getDescription().includes('Kurzfrist-Test') || e.getDescription().includes('Wird storniert') || e.getDescription().includes('Format-Test')) {
         e.deleteEvent();
         deletedCount++;
       }
