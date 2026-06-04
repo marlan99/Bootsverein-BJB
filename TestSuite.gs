@@ -387,45 +387,64 @@ function testRejectedCancellation() {
 
 /**
  * ID 12: Prüft europäische Datumsformate auf erfolgreiche Erkennung
+ * Optimiert: Löscht das Event sofort und wartet kurz, damit Folgetests nicht blockiert werden.
  */
 function testEuropeanDateFormats() {
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
   const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
   
+  // Wir nutzen verschiedene Tage (6, 7, 8, 9), damit sie theoretisch sogar parallel existieren könnten,
+  // löschen sie aber dennoch sofort nacheinander auf.
   const formatsToTest = [
-    { type: 'DOT_LEAD',   daysOut: 15, desc: '05.06.2026 (Mit führenden Nullen)' },
-    { type: 'DOT_NO_LEAD', daysOut: 16, desc: '5.6.2026 (Ohne führende Nullen)' },
-    { type: 'EU_SLASH',   daysOut: 17, desc: '5/6/2026 (EU-Schrägstrich Tag/Monat/Jahr)' },
-    { type: 'DE_TEXT',    daysOut: 18, desc: '5. Juni 2026 (Textmonat mit Punkt)' }
+    { type: 'DOT_LEAD',    daysOut: 6,  slot: 'Vormittag',  desc: '05.06.2026 (Mit führenden Nullen)' },
+    { type: 'DOT_NO_LEAD', daysOut: 7,  slot: 'Nachmittag', desc: '5.6.2026 (Ohne führende Nullen)' },
+    { type: 'EU_SLASH',    daysOut: 8,  slot: 'Vormittag',  desc: '5/6/2026 (EU-Schrägstrich Tag/Monat/Jahr)' },
+    { type: 'DE_TEXT',     daysOut: 9,  slot: 'Nachmittag', desc: '5. Juni 2026 (Textmonat mit Punkt)' }
   ];
   
   let successfulParses = 0;
   
   formatsToTest.forEach(item => {
+    // Vorab-Sicherheit: Falls von einem abgebrochenen alten Testlauf dort noch ein Event liegt, löschen wir es
+    const targetDateObj = new Date();
+    targetDateObj.setDate(targetDateObj.getDate() + item.daysOut);
+    const existingEvents = calendar.getEventsForDay(targetDateObj);
+    existingEvents.forEach(e => {
+      if (e.getTitle().includes(myName)) e.deleteEvent();
+    });
+    Utilities.sleep(500); // Kurz warten nach Vorab-Bereinigung
+
     const formattedDateString = getFutureDate(item.daysOut, item.type);
     
+    // 1. Sende E-Mail mit dem jeweiligen europäisch formatierten Datum
     createTestEmail({
       subject: 'Reservierung',
-      body: `Datum: ${formattedDateString}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Europäisches Format-Test ${item.type}`
+      body: `Datum: ${formattedDateString}\nSlot: ${item.slot}\nTyp: Standard\nBeschreibung: Europäisches Format-Test ${item.type}`
     });
     labelTestEmails();
     processReservationEmails();
-    Utilities.sleep(1500);
+    Utilities.sleep(2000); // Dem System Zeit geben, die Mail zu verarbeiten und einzutragen
     
-    const targetDateObj = new Date();
-    targetDateObj.setDate(targetDateObj.getDate() + item.daysOut);
-    
+    // 2. Prüfe, ob das Event am präzisen Zieltag eingetragen wurde
     const events = calendar.getEventsForDay(targetDateObj);
     const event = events.find(e => e.getTitle().includes(myName) && e.getDescription().includes(item.type));
     
     if (event) {
       successfulParses++;
+      Logger.log(`   -> [ERFOLG] Format erkannt: ${item.type} (${formattedDateString})`);
+      
+      // JETZT WICHTIG: Sofort löschen für den nächsten Schleifendurchlauf!
+      event.deleteEvent();
+      
+      // Google Zeit geben, die Löschung in der Datenbank zu registrieren
+      Utilities.sleep(1500); 
     } else {
-      Logger.log(`   -> [FEHLER] Europäisches Format fehlgeschlagen: "${item.desc}" mit generiertem Text: '${formattedDateString}'`);
+      Logger.log(`   -> [FEHLER] Europäisches Format fehlgeschlagen oder durch Regeln blockiert: "${item.desc}" mit generiertem Text: '${formattedDateString}'`);
     }
     
-    if (event) event.deleteEvent();
+    // Altem Test-Mail-Müll aus diesem Schleifendurchgang direkt wegräumen
+    cleanupOldTestMails();
   });
   
   const passed = (successfulParses === formatsToTest.length);
