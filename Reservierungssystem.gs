@@ -416,7 +416,7 @@ function executeCancellation(data, userId, thread, message) {
   if (!memberData) {
     GmailApp.sendEmail(
       userId, 
-      'Stornierung abgelehnt - Keine Berechtigung', 
+      'Löschen der Buchung abgelehnt - Keine Berechtigung', 
       `Hallo,\n\ndeine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt. Automatische Stornierungen sind nicht möglich.`, 
       { replyTo: CONFIG.ADMIN_EMAIL }
     );
@@ -452,7 +452,7 @@ function executeCancellation(data, userId, thread, message) {
 
     GmailApp.sendEmail(
       userId, 
-      'Stornierung abgelehnt - 24h-Frist unterschritten', 
+      'Löschen der Buchung abgelehnt - 24h-Frist unterschritten', 
       `Hallo ${data.name},\n\ndeine Stornierung für den ${data.parsedDate.toLocaleDateString('de-CH')} wurde abgelehnt.\n\n❌ Grund: ${fehlerGrund}\n\nBitte wende dich bei sehr kurzfristigen Absagen direkt per E-Mail an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
       { replyTo: CONFIG.ADMIN_EMAIL }
     );
@@ -482,7 +482,7 @@ function executeCancellation(data, userId, thread, message) {
     if (terminTitel.toUpperCase().includes('JOKER')) {
       GmailApp.sendEmail(
         userId, 
-        'Stornierung fehlgeschlagen - Joker-Termin', 
+        'Löschen der Buchung fehlgeschlagen - Joker-Termin', 
         `Hallo ${data.name},\n\nder Termin am ${data.parsedDate.toLocaleDateString('de-CH')} ist als JOKER-Termin deklariert.\n\n❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich hierfür direkt an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
         { replyTo: CONFIG.ADMIN_EMAIL }
       );
@@ -525,7 +525,7 @@ function executeCancellation(data, userId, thread, message) {
     thread.moveToArchive();
     Logger.log(`Termin erfolgreich storniert: ${terminTitel} für ${userId}`);
   } else {
-    GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `Hallo ${data.name},\n\nes konnte keine auf dich ausgestellte Buchung für den ${data.parsedDate.toLocaleDateString('de-CH')} im Slot ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} gefunden werden.\n\nBitte prüfe deine Angaben oder wende dich an den Vorstand.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `Hallo ${data.name},\n\nes konnte keine auf dich ausgestellte Buchung für den ${data.parsedDate.toLocaleDateString('de-CH')} im Slot ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} gefunden werden.\n\nBitte prüfe deine Angaben oder wende dich an den Vorstand.`, { replyTo: CONFIG.ADMIN_EMAIL });
     message.markRead();
     
     const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
