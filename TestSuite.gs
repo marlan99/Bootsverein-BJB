@@ -7,13 +7,13 @@
 // Konfiguration für die Testsuite: Hier kannst du jeden Test einzeln steuern
 const TEST_CONFIG = {
   RUN_TEST_VALID_RESERVATION: true,      // ID 1,2,5 – Gültige Reservierung & Zusatzinfos
-  RUN_TEST_STANDARD_LIMIT: true,         // ID 3 – Standard-Limit (< 14 Tage)
-  RUN_TEST_SLOT_TIMES: true,             // ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)
+  RUN_TEST_STANDARD_LIMIT: true,         // ID 3 – Saison-Limit (1 aktiver Termin parallel)
+  RUN_TEST_SLOT_TIMES: true,             // ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)
   RUN_TEST_INVALID_FORMAT: true,         // ID 9 – Intuitive Fehlermeldung bei Falschformat
   RUN_TEST_REMINDER: true,               // ID 6 – Erinnerungsfunktion
   RUN_TEST_SUCCESSFUL_CANCELLATION: true,// ID 10 – Erfolgreiche Stornierung
   RUN_TEST_REJECTED_CANCELLATION: true,  // ID 11 – Abgelehnte Stornierung (24h-Frist)
-  RUN_TEST_EUROPEAN_DATE_FORMATS: false,  // ID 12 – Flexibles europäisches Datums-Parsing
+  RUN_TEST_EUROPEAN_DATE_FORMATS: false, // ID 12 – Flexibles europäisches Datums-Parsing
   RUN_SCALABILITY_TEST: false            // ID 7 – Skalierungstest (Systemstabilität)
 };
 
@@ -39,24 +39,24 @@ function runAllTests() {
   // TESTCASE 2
   // -----------------------------------------------------------------
   if (TEST_CONFIG.RUN_TEST_STANDARD_LIMIT) {
-    Logger.log("\n[START] Testcase: ID 3 – Standard-Limit (< 14 Tage)");
+    Logger.log("\n[START] Testcase: ID 3 – Saison-Limit (Max. 1 aktiver Standard-Termin parallel)");
     cleanupOldTestMails();
     results.push(testStandardLimit());
   } else {
     Logger.log("\n[INFO] Testcase: ID 3 – Übersprungen (Deaktiviert in TEST_CONFIG)");
-    results.push({ name: 'ID 3 – Standard-Limit (< 14 Tage)', skipped: true });
+    results.push({ name: 'ID 3 – Saison-Limit (Max. 1 aktiver Standard-Termin parallel)', skipped: true });
   }
 
   // -----------------------------------------------------------------
   // TESTCASE 3
   // -----------------------------------------------------------------
   if (TEST_CONFIG.RUN_TEST_SLOT_TIMES) {
-    Logger.log("\n[START] Testcase: ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)");
+    Logger.log("\n[START] Testcase: ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)");
     cleanupOldTestMails();
     results.push(testSlotTimes());
   } else {
     Logger.log("\n[INFO] Testcase: ID 8 – Übersprungen (Deaktiviert in TEST_CONFIG)");
-    results.push({ name: 'ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)', skipped: true });
+    results.push({ name: 'ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)', skipped: true });
   }
 
   // -----------------------------------------------------------------
@@ -225,9 +225,9 @@ function testStandardLimit() {
   }
 
   return {
-    name: 'ID 3 – Standard-Limit (< 14 Tage)',
+    name: 'ID 3 – Saison-Limit (Max. 1 aktiver Standard-Termin parallel)',
     passed: passed,
-    message: passed ? 'Zweite Reservierung wurde korrekt blockiert und unter Abgelehnt archiviert.' : 'Sperre griff nicht oder Label wurde nicht gesetzt.'
+    message: passed ? 'Zweite Reservierung wurde blockiert, da bereits ein aktiver Termin in der Saison existiert.' : 'Sperre für parallele Termine griff nicht.'
   };
 }
 
@@ -251,13 +251,13 @@ function testSlotTimes() {
 
   let passed = false;
   if (event) {
-    const startHour = event.getStartTime().getHours();
+    const  = event.getStartTime().getHours();
     const endHour = event.getEndTime().getHours();
-    if (startHour === 6 && endHour === 14) { passed = true; }
+    if (startHour === 8 && endHour === 14) { passed = true; }
   }
 
   return {
-    name: 'ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)',
+    name: 'ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)',
     passed: passed,
     message: passed ? 'Uhrzeit für Vormittags-Slot exakt gesetzt.' : 'Uhrzeiten weichen vom Konzept ab.'
   };
@@ -464,10 +464,10 @@ function testEuropeanDateFormats() {
 function testScalability() {
   const startTime = new Date();
   
-  for (let i = 1; i <= 5; i++) { 
+  for (let i = 1; i <= 2; i++) { // Achtung: Maximal 2 Joker pro Kalenderjahr erlaubt!
     const date = getFutureDate(20 + i, 'DOT_LEAD');
     createTestEmail({
-      body: `Datum: ${date}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Lasttest ${i}`
+      body: `Datum: ${date}\nSlot: Vormittag\nTyp: Joker\nBeschreibung: Lasttest ${i}`
     });
   }
   
@@ -571,8 +571,9 @@ function cleanupOldTestMails() {
   try {
     const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
     const start = new Date();
+    start.setHours(0,0,0,0);
     const end = new Date();
-    end.setDate(start.getDate() + 40); 
+    end.setDate(start.getDate() + 365);
     
     const events = calendar.getEvents(start, end);
     const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
