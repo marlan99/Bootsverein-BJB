@@ -125,22 +125,12 @@ function parseEmailTemplate(body) {
     return data;
   }
 
-  // Flexiblere Datumserkennung für verschiedene Formate (z.B. DD.MM.YYYY oder YYYY-MM-DD)
-  let cleanedDateStr = data.date;
-  
-  // Falls das Format DD.MM.YYYY verwendet wurde, wandeln wir es für den JavaScript-Date-Konstruktor um
-  const chMatch = cleanedDateStr.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})$/);
-  if (chMatch) {
-    const [_, d, m, y] = chMatch;
-    data.parsedDate = new Date(y, m - 1, d);
-  } else {
-    // Fallback für YYYY-MM-DD und Textformate (z.B. "30. Juni 2026")
-    data.parsedDate = new Date(cleanedDateStr);
-  }
+  // NUTZT DIE NEUE EUROPÄISCHE PARSING-LOGIK
+  data.parsedDate = parseEuropeanDate(data.date);
 
   // Prüfen, ob ein gültiges Datum erzeugt werden konnte
   if (!data.parsedDate || isNaN(data.parsedDate.getTime())) {
-    data.error = 'Ungültiges Datum. Das Datum konnte nicht erkannt werden (Erlaubt z.B.: 30.06.2026 oder 2026-06-30).';
+    data.error = 'Ungültiges Datum. Das Datum konnte nicht erkannt werden (Erlaubt z.B.: 05.06.2026, 5.6.2026, 5/6/2026 oder 5. Juni 2026).';
     return data;
   }
 
@@ -167,6 +157,60 @@ function parseEmailTemplate(body) {
 
   data.valid = true;
   return data;
+}
+
+/**
+ * INTELLIGENTER PARSER FÜR EUROPÄISCHE DATUMSFORMATE
+ * Konvertiert: DD.MM.YYYY, D.M.YYYY, DD/MM/YYYY, D/M/YYYY sowie "D. Monatsname YYYY"
+ */
+function parseEuropeanDate(dateStr) {
+  if (!dateStr) return null;
+  dateStr = dateStr.trim();
+  
+  // 1. Fall: Deutscher Freitext-Monat (z.B. "5. Juni 2026" oder "05. Juni 2026")
+  const textMonthRegex = /^(\d{1,2})\.\s*([a-zA-ZäÄöÖüÜß]+)\s*(\d{4})$/;
+  const textMatch = dateStr.match(textMonthRegex);
+  if (textMatch) {
+    const day = parseInt(textMatch[1], 10);
+    const monthName = textMatch[2].toLowerCase();
+    const year = parseInt(textMatch[3], 10);
+    
+    const months = {
+      'januar': 0, 'jan': 0, 'februar': 1, 'feb': 1, 'märz': 2, 'mrz': 2, 'maerz': 2,
+      'april': 3, 'apr': 3, 'mai': 4, 'juni': 5, 'jun': 5, 'juli': 6, 'jul': 6,
+      'august': 7, 'aug': 7, 'september': 8, 'sep': 8, 'oktober': 9, 'okt': 9,
+      'november': 10, 'nov': 10, 'dezember': 11, 'dez': 11
+    };
+    
+    if (months[monthName] !== undefined) {
+      return new Date(year, months[monthName], day, 12, 0, 0); // 12:00 Uhr verhindert Zeitzonensprünge
+    }
+  }
+  
+  // 2. Fall: Rein numerisch mit Punkten oder Slashes (z.B. 05.06.2026, 5.6.2026, 5/6/2026)
+  // Expliziter Schutz: Zerlegung von links nach rechts (Tag vor Monat)
+  const numericRegex = /^(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})$/;
+  const numMatch = dateStr.match(numericRegex);
+  if (numMatch) {
+    const day = parseInt(numMatch[1], 10);
+    const month = parseInt(numMatch[2], 10) - 1; // JS-Monate sind 0-basiert
+    const year = parseInt(numMatch[3], 10);
+    
+    const parsedDate = new Date(year, month, day, 12, 0, 0);
+    
+    // Validierungs-Schutz (verhindert fiktive Daten wie den 31.02.)
+    if (parsedDate.getFullYear() === year && parsedDate.getMonth() === month && parsedDate.getDate() === day) {
+      return parsedDate;
+    }
+  }
+  
+  // Fallback für native ISO-Formate (YYYY-MM-DD), falls vorhanden
+  const fallbackDate = new Date(dateStr);
+  if (!isNaN(fallbackDate.getTime())) {
+    return fallbackDate;
+  }
+  
+  return null;
 }
 
 /**
@@ -358,17 +402,12 @@ function sendConfirmationEmail(to, event, data, thread) {
   const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\nDatum: ${formatDateDDMMYYYY(data.parsedDate)}\nSlot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\nTyp: ${data.type === 'joker' ? 'Joker' : 'Standard'}\n\nDu erhältst 1 Tag vorher eine Erinnerung per E-Mail.\n\nVielen Dank!\nDein Vorstand`;
 
   try {
-    // Versuche die Bestätigungs-Mail normal zu versenden
     GmailApp.sendEmail(to, subject, plainBody, { 
       replyTo: CONFIG.ADMIN_EMAIL,
       htmlBody: htmlBody 
     });
   } catch (error) {
-    // Falls das Limit erreicht ist, fangen wir den Fehler ab
     Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Bestätigung für ${data.name} (Datum: ${formatDateDDMMYYYY(data.parsedDate)}) konnte nicht gesendet werden.`);
-    Logger.log(`Details zum Fehler: ${error.message}`);
-    
-    // Erstellt einen Entwurf direkt im Thread als visuellen Nachweis im Test
     if (thread) {
       thread.createDraftReply(plainBody, {
         htmlBody: `<b>[SYSTEM-NOTIZ: Mail-Limit erreicht - Entwurf generiert]</b><br><br>${htmlBody}`
@@ -382,15 +421,9 @@ function sendRejectionEmail(to, reason, thread) {
   const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\n❌ Grund: ${reason}\n\nBitte prüfe die Regeln und sende eine korrigierte Anfrage.`;
 
   try {
-    // Versuche die E-Mail normal zu versenden
     GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
   } catch (error) {
-    // Falls das Limit erreicht ist, fangen wir den Fehler hier ab
     Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Ablehnung an ${to} konnte nicht gesendet werden.`);
-    Logger.log(`Details zum Fehler: ${error.message}`);
-    
-    // Optional: Füge dem Gmail-Thread trotzdem eine Notiz hinzu, 
-    // damit du im Postfach siehst, dass das Skript antworten wollte.
     if (thread) {
       thread.createDraftReply(`[SYSTEM-NOTIZ: Mail-Limit erreicht] Ablehnungsgrund: ${reason}`);
     }
@@ -407,20 +440,17 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
 
-  // 1. Trigger für den E-Mail-Import (Jede Minute)
   ScriptApp.newTrigger('processReservationEmails')
     .timeBased()
     .everyMinutes(1)
     .create();
 
-  // 2. NEU: Trigger für die tägliche Erinnerung (Morgens zwischen 4 und 5 Uhr)
   ScriptApp.newTrigger('sendDailyReservationReminders')
     .timeBased()
     .everyDays(1)
-    .atHour(4) // Startet das Zeitfenster um 4:00 Uhr morgens
+    .atHour(4) 
     .create();
 
-  // Ordner/Labels in Gmail sicherstellen
   ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt'].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) {
       GmailApp.createLabel(label);
@@ -433,7 +463,6 @@ function setupTriggers() {
 function executeCancellation(data, userId, thread, message) {
   const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
 
-  // === 0. PRÜFUNG: Ist der Absender auf der Whitelist? ===
   const memberData = getAuthorizedUserData(userId);
   if (!memberData) {
     GmailApp.sendEmail(
@@ -451,9 +480,7 @@ function executeCancellation(data, userId, thread, message) {
     return;
   }
   
-  // Namen aus der Tabelle für die Stornierungs-Mail setzen
   data.name = memberData.name;
-
   const jetzt = new Date(); 
 
   const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
@@ -463,7 +490,6 @@ function executeCancellation(data, userId, thread, message) {
 
   const stornierungsFrist = new Date(terminStartZeit.getTime() - (24 * 60 * 60 * 1000));
 
-  // PRÜFUNG: Ist die 24h-Frist bereits unterschritten?
   if (jetzt > stornierungsFrist) {
     let fehlerGrund = '';
     if (terminStartZeit < jetzt) {
@@ -487,20 +513,17 @@ function executeCancellation(data, userId, thread, message) {
     return; 
   }
 
-  // LÖSCHUNG PROCESS
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   const terminEndZeit = new Date(terminStartZeit);
   const [eh, em] = slotTime.end.split(':');
   terminEndZeit.setHours(eh, em, 0, 0);
 
   const events = calendar.getEvents(terminStartZeit, terminEndZeit);
-  // Sucht das Event anhand der Mitglieder-ID aus der Whitelist
   const userEvent = events.find(e => e.getDescription().includes(`Mitglieder-ID: ${memberData.id}`));
 
   if (userEvent) {
     const terminTitel = userEvent.getTitle();
 
-    // JOKER-SCHUTZ-PRÜFUNG
     if (terminTitel.toUpperCase().includes('JOKER')) {
       GmailApp.sendEmail(
         userId, 
@@ -514,14 +537,11 @@ function executeCancellation(data, userId, thread, message) {
       thread.addLabel(labelAbgelehnt);
       if (labelNeu) thread.removeLabel(labelNeu);
       thread.moveToArchive();
-      Logger.log(`Automatische Stornierung von Joker-Termin blockiert für: ${userId}`);
       return;
     }
 
-    // Event im Kalender löschen
     userEvent.deleteEvent(); 
     
-    // 1. Antwort an das Mitglied senden
     const slotFormatted = data.slot.charAt(0).toUpperCase() + data.slot.slice(1);
     const dateFormatted = formatDateDDMMYYYY(data.parsedDate);
     const userBody = `Hallo ${data.name},\n\ndeine Reservierung für den ${dateFormatted} (${slotFormatted}) wurde erfolgreich storniert. Der Slot ist wieder freigegeben.`;
@@ -530,15 +550,12 @@ function executeCancellation(data, userId, thread, message) {
     try {
       GmailApp.sendEmail(userId, userSubject, userBody, {
         replyTo: CONFIG.ADMIN_EMAIL,
-        threadId: thread.getId() // Hält die E-Mail im selben Verlauf
+        threadId: thread.getId()
       });
     } catch (userMailError) {
-      Logger.log(`⚠️ Fehler beim Senden der Bestätigung an Mitglied: ${userMailError.message}`);
-      // Fallback: Falls sendEmail fehlschlägt, als normalen Reply versuchen
       thread.reply(userBody);
     }
 
-    // 2. Benachrichtigung an den Admin senden
     try {
       const adminSubject = `INFO: Buchung entfernt - ${data.name}`;
       const adminBody = `Hallo Admin,\n\nein Termin wurde soeben automatisch storniert und im Kalender freigegeben:\n\n` +
@@ -549,7 +566,6 @@ function executeCancellation(data, userId, thread, message) {
                         `Das System hat den Termin gelöscht und den Slot wieder freigegeben.`;
       
       GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, adminSubject, adminBody);
-      Logger.log(`Admin-Benachrichtigung für Stornierung gesendet an: ${CONFIG.ADMIN_EMAIL}`);
     } catch (adminError) {
       Logger.log(`⚠️ Fehler beim Senden der Admin-Info: ${adminError.message}`);
     }
@@ -559,7 +575,6 @@ function executeCancellation(data, userId, thread, message) {
     thread.addLabel(labelErledigt);
     if (labelNeu) thread.removeLabel(labelNeu);
     thread.moveToArchive();
-    Logger.log(`Termin erfolgreich storniert: ${terminTitel} für ${userId}`);
   } else {
     GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `Hallo ${data.name},\n\nes konnte keine auf dich ausgestellte Buchung für den ${formatDateDDMMYYYY(data.parsedDate)} im Slot ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} gefunden werden.\n\nBitte prüfe deine Angaben oder wende dich an den Vorstand.`, { replyTo: CONFIG.ADMIN_EMAIL });
     message.markRead();
@@ -571,83 +586,56 @@ function executeCancellation(data, userId, thread, message) {
   }
 }
 
-/**
- * Prüft die Whitelist und gibt bei Erfolg alle Benutzerdaten zurück.
- * Unterstützt auch fehlende Mobilnummern oder Nachnamen.
- * @param {string} email - Die zu prüfende E-Mail-Adresse
- * @return {Object|null} - Objekt mit Benutzerdaten oder null, wenn nicht gefunden
- */
 function getAuthorizedUserData(email) {
   try {
     const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
-    
-    // ÄNDERUNG: Holt automatisch das ERSTE Tabellenblatt (Index 0)
     const sheet = ss.getSheets()[0]; 
     
-    if (!sheet) {
-      Logger.log(`Fehler: Kein Tabellenblatt in der Datei gefunden.`);
-      return null;
-    }
+    if (!sheet) return null;
     
     const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) return null; // Tabelle ist leer (oder enthält nur die Kopfzeile)
+    if (lastRow <= 1) return null; 
     
-    // Holt alle Daten ab Zeile 2 (ohne Kopfzeile) bis zur 5. Spalte (Spalte E / Mobile)
     const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
     const searchEmail = email.trim().toLowerCase();
     
-    // Zeilen durchlaufen und nach der E-Mail in Spalte D (Index 3) suchen
     for (let i = 0; i < dataRange.length; i++) {
       const row = dataRange[i];
-      
-      // Sicherheitsprüfung, falls eine Zeile komplett leer ist
       if (!row[3]) continue; 
       
-      const currentEmail = row[3].toString().trim().toLowerCase(); // Spalte D: E-Mail
+      const currentEmail = row[3].toString().trim().toLowerCase(); 
       
       if (currentEmail === searchEmail) {
-        // Person gefunden! 
         const vorname = row[1] ? row[1].toString().trim() : '';
         const nachname = row[2] ? row[2].toString().trim() : '';
         
-        // Verhindert doppelte Leerzeichen, falls der Nachname fehlt
         let vollerName = `${vorname} ${nachname}`.trim();
-        if (!vollerName) {
-          vollerName = email; // Fallback, falls absolut kein Name eingetragen ist
-        }
+        if (!vollerName) { vollerName = email; }
 
-        // Mobilnummer prüfen. Falls leer, Standardtext setzen
         const mobileRaw = row[4] ? row[4].toString().trim() : '';
         const mobile = mobileRaw !== '' ? mobileRaw : 'Nicht hinterlegt';
 
         return {
-          id: row[0] ? row[0].toString().trim() : 'Keine ID', // Spalte A: Mitglieder-ID
-          vorname: vorname,   // Spalte B: Vorname
-          nachname: nachname, // Spalte C: Name
-          name: vollerName,   // Kombiniert ohne doppelte Leerzeichen
-          email: row[3],      // Spalte D: E-Mail
-          mobile: mobile      // Spalte E: Mobile
+          id: row[0] ? row[0].toString().trim() : 'Keine ID', 
+          vorname: vorname,   
+          nachname: nachname, 
+          name: vollerName,   
+          email: row[3],      
+          mobile: mobile      
         };
       }
     }
-    
-    return null; // Keine Übereinstimmung gefunden
+    return null; 
   } catch (e) {
     Logger.log('Fehler beim Einlesen der Mitgliederdaten: ' + e.message);
     return null;
   }
 }
 
-/**
- * Prüft den Kalender nach Terminen für den Folgetag und sendet E-Mail-Erinnerungen
- * an die buchenden Mitglieder anhand des Eintrags "Kontakt: E-Mail".
- */
 function sendDailyReservationReminders() {
   Logger.log("=== STARTE TÄGLICHE ERINNERUNGS-PRÜFUNG ===");
-  
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   
-  // Berechne den morgigen Tag (Start: 00:00 Uhr, Ende: 23:59 Uhr)
   const tomorrowStart = new Date();
   tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   tomorrowStart.setHours(0, 0, 0, 0);
@@ -656,14 +644,10 @@ function sendDailyReservationReminders() {
   tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
   tomorrowEnd.setHours(23, 59, 59, 999);
   
-  // Alle Events für morgen holen
   const events = calendar.getEvents(tomorrowStart, tomorrowEnd);
-  Logger.log(`${events.length} Termine für morgen gefunden.`);
   
   events.forEach(event => {
     const description = event.getDescription() || "";
-    
-    // REGEX-MATCH: Sucht nach "Kontakt: " gefolgt von einer E-Mail-Adresse
     const emailMatch = description.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
     
     if (emailMatch && emailMatch[1]) {
@@ -677,11 +661,7 @@ function sendDailyReservationReminders() {
       body += `Viel Spass auf dem Wasser!\n\nDein Vorstand`;
       
       MailApp.sendEmail(memberEmail, subject, body);
-      Logger.log(`   -> Erinnerung erfolgreich an ${memberEmail} gesendet.`);
-    } else {
-      Logger.log(`   -> Kein gültiger 'Kontakt:'-Eintrag im Event '${event.getTitle()}' gefunden.`);
     }
   });
-  
   Logger.log("=== ERINNERUNGS-PRÜFUNG BEENDET ===");
 }
