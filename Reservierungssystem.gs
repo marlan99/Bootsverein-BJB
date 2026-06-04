@@ -57,7 +57,7 @@ function processSingleEmail(message, thread) {
 
   // LOGIK FÜR STORNIERUNG
   if (subject.includes('stornierung') || subject.includes('absage')) {
-    executeCancellation(data, userId, thread, message);
+    execute(data, userId, thread, message);
     return; 
   }
 
@@ -496,9 +496,27 @@ function executeCancellation(data, userId, thread, message) {
       return;
     }
 
+    // Event im Kalender löschen
     userEvent.deleteEvent(); 
     
+    // 1. Antwort an das Mitglied senden
     thread.reply(`Hallo ${data.name},\n\ndeine Reservierung für den ${data.parsedDate.toLocaleDateString('de-CH')} (${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}) wurde erfolgreich storniert. Der Slot ist wieder freigegeben.`);
+    
+    // 2. Benachrichtigung an den Admin senden
+    try {
+      const adminSubject = `INFO: Stornierung erfolgt - ${data.name}`;
+      const adminBody = `Hallo Admin,\n\nein Termin wurde soeben automatisch storniert und im Kalender freigegeben:\n\n` +
+                        `👤 Mitglied: ${data.name} (ID: ${memberData.id})\n` +
+                        `📧 E-Mail: ${userId}\n` +
+                        `📅 Datum: ${data.parsedDate.toLocaleDateString('de-CH')}\n` +
+                        `⏱️ Slot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} (${slotTime.start} - ${slotTime.end} Uhr)\n\n` +
+                        `Das System hat den Termin gelöscht und den Slot wieder freigegeben.`;
+      
+      GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, adminSubject, adminBody);
+      Logger.log(`Admin-Benachrichtigung für Stornierung gesendet an: ${CONFIG.ADMIN_EMAIL}`);
+    } catch (adminError) {
+      Logger.log(`⚠️ Fehler beim Senden der Admin-Info: ${adminError.message}`);
+    }
     
     message.markRead();
     const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') || GmailApp.createLabel('Reservierung/Erledigt');
