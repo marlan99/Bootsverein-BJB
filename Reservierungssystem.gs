@@ -125,18 +125,27 @@ function parseEmailTemplate(body) {
     return data;
   }
 
-  const dateMatch = data.date.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (!dateMatch) {
-    data.error = 'Ungültiges Datumsformat. Verwende: YYYY-MM-DD';
+  // Flexiblere Datumserkennung für verschiedene Formate (z.B. DD.MM.YYYY oder YYYY-MM-DD)
+  let cleanedDateStr = data.date;
+  
+  // Falls das Format DD.MM.YYYY verwendet wurde, wandeln wir es für den JavaScript-Date-Konstruktor um
+  const chMatch = cleanedDateStr.match(/^(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})$/);
+  if (chMatch) {
+    const [_, d, m, y] = chMatch;
+    data.parsedDate = new Date(y, m - 1, d);
+  } else {
+    // Fallback für YYYY-MM-DD und Textformate (z.B. "30. Juni 2026")
+    data.parsedDate = new Date(cleanedDateStr);
+  }
+
+  // Prüfen, ob ein gültiges Datum erzeugt werden konnte
+  if (!data.parsedDate || isNaN(data.parsedDate.getTime())) {
+    data.error = 'Ungültiges Datum. Das Datum konnte nicht erkannt werden (Erlaubt z.B.: 30.06.2026 oder 2026-06-30).';
     return data;
   }
 
-  const [_, y, m, d] = dateMatch;
-  data.parsedDate = new Date(y, m - 1, d);
-  if (isNaN(data.parsedDate)) {
-    data.error = 'Ungültiges Datum.';
-    return data;
-  }
+  // Uhrzeit des Objekts auf 00:00 Uhr zurücksetzen für exakte Vergleiche
+  data.parsedDate.setHours(0, 0, 0, 0);
 
   data.slot = data.slot.toLowerCase();
   if (!['vormittag', 'nachmittag'].includes(data.slot)) {
@@ -158,6 +167,19 @@ function parseEmailTemplate(body) {
 
   data.valid = true;
   return data;
+}
+
+/**
+ * Formatiert ein Datumsobjekt strikt in das Format DD.MM.YYYY mit führenden Nullen
+ * @param {Date} date - Das zu formatierende Datum
+ * @return {string} - Das formatierte Datum (z.B. 30.06.2026)
+ */
+function formatDateDDMMYYYY(date) {
+  if (!date || isNaN(date.getTime())) return 'Ungültiges Datum';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
 }
 
 function validateRequest(data, userId, sender) {
@@ -198,7 +220,7 @@ function validateRequest(data, userId, sender) {
     if (data.parsedDate > maxJokerDate) {
       return { 
         valid: false, 
-        error: `Joker-Termine dürfen maximal ${CONFIG.JOKER_MAX_WEEKS} Wochen in der Zukunft liegen. Der späteste mögliche Tag ist der: ${maxJokerDate.toLocaleDateString('de-CH')}` 
+        error: `Joker-Termine dürfen maximal ${CONFIG.JOKER_MAX_WEEKS} Wochen in der Zukunft liegen. Der späteste mögliche Tag ist der: ${formatDateDDMMYYYY(maxJokerDate)}` 
       };
     }
 
@@ -230,7 +252,7 @@ function validateRequest(data, userId, sender) {
     if (data.parsedDate > maxFutureDate) {
       return {
         valid: false,
-        error: `Buchungstermine dürfen maximal 2 Wochen in der Zukunft liegen. Der späteste mögliche Tag ist der: ${maxFutureDate.toLocaleDateString('de-CH')}`
+        error: `Buchungstermine dürfen maximal 2 Wochen in der Zukunft liegen. Der späteste mögliche Tag ist der: ${formatDateDDMMYYYY(maxFutureDate)}`
       };
     }
 
@@ -250,7 +272,7 @@ function validateRequest(data, userId, sender) {
       nextAvailable.setDate(nextAvailable.getDate() + 1);
       return {
         valid: false,
-        error: `Du hast bereits einen Termin in den nächsten 2 Wochen gebucht. Nächster mögliche Buchungszeitpunkt ist: ${nextAvailable.toLocaleDateString('de-CH')}`
+        error: `Du hast bereits einen Termin in den nächsten 2 Wochen gebucht. Nächster mögliche Buchungszeitpunkt ist: ${formatDateDDMMYYYY(nextAvailable)}`
       };
     }
   }
@@ -325,7 +347,7 @@ function sendConfirmationEmail(to, event, data, thread) {
   const htmlBody = `
     Hallo ${data.name},<br><br>
     dein Termin wurde erfolgreich eingetragen:<br><br>
-    &#128197; <b>Datum:</b> ${data.parsedDate.toLocaleDateString('de-CH')}<br>
+    &#128197; <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>
     &#9200; <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br>
     &#127991; <b>Typ:</b> ${data.type === 'joker' ? 'Joker' : 'Standard'}<br><br>
     Du erhältst 1 Tag vorher eine Erinnerung per E-Mail.<br><br>
@@ -333,7 +355,7 @@ function sendConfirmationEmail(to, event, data, thread) {
     Dein Vorstand
   `;
 
-  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\nDatum: ${data.parsedDate.toLocaleDateString('de-CH')}\nSlot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\nTyp: ${data.type === 'joker' ? 'Joker' : 'Standard'}\n\nDu erhältst 1 Tag vorher eine Erinnerung per E-Mail.\n\nVielen Dank!\nDein Vorstand`;
+  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\nDatum: ${formatDateDDMMYYYY(data.parsedDate)}\nSlot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\nTyp: ${data.type === 'joker' ? 'Joker' : 'Standard'}\n\nDu erhältst 1 Tag vorher eine Erinnerung per E-Mail.\n\nVielen Dank!\nDein Vorstand`;
 
   try {
     // Versuche die Bestätigungs-Mail normal zu versenden
@@ -343,7 +365,7 @@ function sendConfirmationEmail(to, event, data, thread) {
     });
   } catch (error) {
     // Falls das Limit erreicht ist, fangen wir den Fehler ab
-    Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Bestätigung für ${data.name} (Datum: ${data.parsedDate.toLocaleDateString('de-CH')}) konnte nicht gesendet werden.`);
+    Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Bestätigung für ${data.name} (Datum: ${formatDateDDMMYYYY(data.parsedDate)}) konnte nicht gesendet werden.`);
     Logger.log(`Details zum Fehler: ${error.message}`);
     
     // Erstellt einen Entwurf direkt im Thread als visuellen Nachweis im Test
@@ -447,13 +469,13 @@ function executeCancellation(data, userId, thread, message) {
     if (terminStartZeit < jetzt) {
       fehlerGrund = 'Der Termin liegt in der Vergangenheit.';
     } else {
-      fehlerGrund = `Die Frist für eine automatische Stornierung (bis spätestens 24 Stunden vor Terminbeginn) ist abgelaufen. Letzte Möglichkeit zur Stornierung wäre am ${stornierungsFrist.toLocaleDateString('de-CH')} um ${stornierungsFrist.toLocaleTimeString('de-CH', {hour: '2-digit', minute:'2-digit'})} Uhr gewesen.`;
+      fehlerGrund = `Die Frist für eine automatische Stornierung (bis spätestens 24 Stunden vor Terminbeginn) ist abgelaufen. Letzte Möglichkeit zur Stornierung wäre am ${formatDateDDMMYYYY(stornierungsFrist)} um ${stornierungsFrist.toLocaleTimeString('de-CH', {hour: '2-digit', minute:'2-digit'})} Uhr gewesen.`;
     }
 
     GmailApp.sendEmail(
       userId, 
       'Löschen der Buchung abgelehnt - 24h-Frist unterschritten', 
-      `Hallo ${data.name},\n\ndeine Stornierung für den ${data.parsedDate.toLocaleDateString('de-CH')} wurde abgelehnt.\n\n❌ Grund: ${fehlerGrund}\n\nBitte wende dich bei sehr kurzfristigen Absagen direkt per E-Mail an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
+      `Hallo ${data.name},\n\ndeine Stornierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde abgelehnt.\n\n❌ Grund: ${fehlerGrund}\n\nBitte wende dich bei sehr kurzfristigen Absagen direkt per E-Mail an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
       { replyTo: CONFIG.ADMIN_EMAIL }
     );
     message.markRead();
@@ -483,7 +505,7 @@ function executeCancellation(data, userId, thread, message) {
       GmailApp.sendEmail(
         userId, 
         'Löschen der Buchung fehlgeschlagen - Joker-Termin', 
-        `Hallo ${data.name},\n\nder Termin am ${data.parsedDate.toLocaleDateString('de-CH')} ist als JOKER-Termin deklariert.\n\n❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich hierfür direkt an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
+        `Hallo ${data.name},\n\nder Termin am ${formatDateDDMMYYYY(data.parsedDate)} ist als JOKER-Termin deklariert.\n\n❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich hierfür direkt an den Vorstand unter: ${CONFIG.ADMIN_EMAIL}.`, 
         { replyTo: CONFIG.ADMIN_EMAIL }
       );
       message.markRead();
@@ -501,7 +523,7 @@ function executeCancellation(data, userId, thread, message) {
     
     // 1. Antwort an das Mitglied senden
     const slotFormatted = data.slot.charAt(0).toUpperCase() + data.slot.slice(1);
-    const dateFormatted = data.parsedDate.toLocaleDateString('de-CH');
+    const dateFormatted = formatDateDDMMYYYY(data.parsedDate);
     const userBody = `Hallo ${data.name},\n\ndeine Reservierung für den ${dateFormatted} (${slotFormatted}) wurde erfolgreich storniert. Der Slot ist wieder freigegeben.`;
     const userSubject = `Bestätigung: Termin am ${dateFormatted} freigegeben`;
 
@@ -522,7 +544,7 @@ function executeCancellation(data, userId, thread, message) {
       const adminBody = `Hallo Admin,\n\nein Termin wurde soeben automatisch storniert und im Kalender freigegeben:\n\n` +
                         `👤 Mitglied: ${data.name} (ID: ${memberData.id})\n` +
                         `📧 E-Mail: ${userId}\n` +
-                        `📅 Datum: ${data.parsedDate.toLocaleDateString('de-CH')}\n` +
+                        `📅 Datum: ${formatDateDDMMYYYY(data.parsedDate)}\n` +
                         `⏱️ Slot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} (${slotTime.start} - ${slotTime.end} Uhr)\n\n` +
                         `Das System hat den Termin gelöscht und den Slot wieder freigegeben.`;
       
@@ -539,7 +561,7 @@ function executeCancellation(data, userId, thread, message) {
     thread.moveToArchive();
     Logger.log(`Termin erfolgreich storniert: ${terminTitel} für ${userId}`);
   } else {
-    GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `Hallo ${data.name},\n\nes konnte keine auf dich ausgestellte Buchung für den ${data.parsedDate.toLocaleDateString('de-CH')} im Slot ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} gefunden werden.\n\nBitte prüfe deine Angaben oder wende dich an den Vorstand.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `Hallo ${data.name},\n\nes konnte keine auf dich ausgestellte Buchung für den ${formatDateDDMMYYYY(data.parsedDate)} im Slot ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)} gefunden werden.\n\nBitte prüfe deine Angaben oder wende dich an den Vorstand.`, { replyTo: CONFIG.ADMIN_EMAIL });
     message.markRead();
     
     const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
@@ -650,7 +672,7 @@ function sendDailyReservationReminders() {
       
       const subject = `Erinnerung: Deine Boot Buchung für morgen!`;
       let body = `Hallo!\n\nDies ist die automatische Erinnerung für deine anstehende Reservierung:\n\n`;
-      body += `\u{1F4C5} Datum: ${tomorrowStart.toLocaleDateString('de-CH')}\n`;
+      body += `\u{1F4C5} Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n`;
       body += `\u{23F0} Slot: ${slotName}\n\n`;
       body += `Viel Spass auf dem Wasser!\n\nDein Vorstand`;
       
