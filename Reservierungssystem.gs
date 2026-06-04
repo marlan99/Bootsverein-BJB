@@ -57,7 +57,7 @@ function processSingleEmail(message, thread) {
 
   // LOGIK FÜR STORNIERUNG
   if (subject.includes('stornierung') || subject.includes('absage')) {
-    execute(data, userId, thread, message);
+    executeCancellation(data, userId, thread, message);
     return; 
   }
 
