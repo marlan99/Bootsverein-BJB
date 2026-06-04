@@ -504,7 +504,7 @@ function executeCancellation(data, userId, thread, message) {
     
     // 2. Benachrichtigung an den Admin senden
     try {
-      const adminSubject = `INFO: Stornierung erfolgt - ${data.name}`;
+      const adminSubject = `INFO: Buchung entfernt - ${data.name}`;
       const adminBody = `Hallo Admin,\n\nein Termin wurde soeben automatisch storniert und im Kalender freigegeben:\n\n` +
                         `👤 Mitglied: ${data.name} (ID: ${memberData.id})\n` +
                         `📧 E-Mail: ${userId}\n` +
@@ -634,7 +634,7 @@ function sendDailyReservationReminders() {
       const memberEmail = emailMatch[1].trim();
       const slotName = event.getStartTime().getHours() === 6 ? "Vormittag (06:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
       
-      const subject = `Erinnerung: Deine Boot-Reservierung für morgen!`;
+      const subject = `Erinnerung: Deine Boot Buchung für morgen!`;
       let body = `Hallo!\n\nDies ist die automatische Erinnerung für deine anstehende Reservierung:\n\n`;
       body += `\u{1F4C5} Datum: ${tomorrowStart.toLocaleDateString('de-CH')}\n`;
       body += `\u{23F0} Slot: ${slotName}\n\n`;
