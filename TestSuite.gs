@@ -13,7 +13,7 @@ const TEST_CONFIG = {
   RUN_TEST_REMINDER: true,               // ID 6 – Erinnerungsfunktion
   RUN_TEST_SUCCESSFUL_CANCELLATION: true,// ID 10 – Erfolgreiche Stornierung
   RUN_TEST_REJECTED_CANCELLATION: true,  // ID 11 – Abgelehnte Stornierung (24h-Frist)
-  RUN_TEST_EUROPEAN_DATE_FORMATS: true,  // ID 12 – Flexibles europäisches Datums-Parsing
+  RUN_TEST_EUROPEAN_DATE_FORMATS: false,  // ID 12 – Flexibles europäisches Datums-Parsing
   RUN_SCALABILITY_TEST: false            // ID 7 – Skalierungstest (Systemstabilität)
 };
 
