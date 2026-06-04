@@ -4,6 +4,11 @@
  * * VORAUSSETZUNG: Deine E-Mail-Adresse muss in der Whitelist-Tabelle eingetragen sein!
  */
 
+// Konfiguration für die Testsuite
+const TEST_CONFIG = {
+  RUN_SCALABILITY_TEST: false // <--- Auf 'true' setzen, um den Skalierungstest auszuführen
+};
+
 function runAllTests() {
   Logger.log("=================================================================");
   Logger.log("=== START DER AUTOMATISIERTEN TESTSUITE ===");
@@ -46,11 +51,29 @@ function runAllTests() {
   results.push(testReminder());
 
   // -----------------------------------------------------------------
-  // TESTCASE 6
+  // TESTCASE 6: Erfolgreiche Stornierung (NEU)
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 7 – Skalierungstest (Systemstabilität)");
+  Logger.log("\n[START] Testcase: ID 10 – Erfolgreiche Stornierung (Frist eingehalten)");
   cleanupOldTestMails();
-  results.push(testScalability());
+  results.push(testSuccessfulCancellation());
+
+  // -----------------------------------------------------------------
+  // TESTCASE 7: Abgelehnte Stornierung (NEU)
+  // -----------------------------------------------------------------
+  Logger.log("\n[START] Testcase: ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)");
+  cleanupOldTestMails();
+  results.push(testRejectedCancellation());
+
+  // -----------------------------------------------------------------
+  // TESTCASE 8: Skalierungstest (OPTIONAL)
+  // -----------------------------------------------------------------
+  if (TEST_CONFIG.RUN_SCALABILITY_TEST) {
+    Logger.log("\n[START] Testcase: ID 7 – Skalierungstest (Systemstabilität)");
+    cleanupOldTestMails();
+    results.push(testScalability());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 7 – Skalierungstest übersprungen (Deaktiviert in TEST_CONFIG)");
+  }
 
   // -----------------------------------------------------------------
   // AUSWERTUNG & ZUSAMMENFASSUNG
@@ -93,17 +116,17 @@ function testValidReservation() {
     body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Testlauf Hauptfunktion\nAnlass: Automatisierung`
   });
 
-labelTestEmails();
+  labelTestEmails();
   processReservationEmails(); 
 
-  // Holt deine Daten aus dem ersten Tabellenblatt
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
-  // Falls du zum Testen eine Mailadresse nutzt, die nicht in der Liste steht, 
-  // nutzen wir deinen Google-Kontonamen als Fallback für den Kalender-Match
   const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
 
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
-  const events = calendar.getEventsForDay(new Date(testDate));
+  // Datumsobjekt für die Suche parsen
+  const parts = testDate.split('.');
+  const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
+  const events = calendar.getEventsForDay(parsedDate);
   const event = events.find(e => e.getTitle().includes(myName));
 
   const passed = !!event && event.getDescription().includes('Testlauf Hauptfunktion') && event.getDescription().includes('Automatisierung');
@@ -158,7 +181,9 @@ function testSlotTimes() {
   const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
 
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
-  const events = calendar.getEventsForDay(new Date(testDate));
+  const parts = testDate.split('.');
+  const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
+  const events = calendar.getEventsForDay(parsedDate);
   const event = events.find(e => e.getTitle().includes(myName));
 
   let passed = false;
@@ -202,7 +227,6 @@ function testInvalidFormat() {
  * ID 6: Prüft die automatisierte E-Mail-Erinnerung für den Folgetag
  */
 function testReminder() {
-  // 1. Erstelle eine reguläre Reservierung für MORGEN
   const tomorrowDate = getFutureDate(1);
   
   createTestEmail({ 
@@ -210,16 +234,13 @@ function testReminder() {
   });
   
   labelTestEmails();
-  processReservationEmails(); // Hauptcode erstellt das Event inklusive "Kontakt: deine-mail@..."
+  processReservationEmails(); 
 
-  // 2. Trigger die Erinnerungs-Funktion manuell für den Testfall
   sendDailyReservationReminders();
   
-  // Kurze Pause, damit Gmail Zeit hat, die gesendete Mail im Postfach zu registrieren
   Utilities.sleep(3500);
   
-  // 3. Überprüfung: Kam die Erinnerungs-Mail bei dir an?
-  const threads = GmailApp.search(`subject:"Erinnerung: Deine Boot-Reservierung für morgen!" to:me`);
+  const threads = GmailApp.search(`subject:"Erinnerung: Deine Boot Buchung für morgen!" to:me`);
   const passed = threads.length > 0;
 
   return {
@@ -228,6 +249,81 @@ function testReminder() {
     message: passed 
       ? 'Erinnerungs-E-Mail wurde erfolgreich generiert und an den Buchenden zugestellt.' 
       : 'Es wurde keine Erinnerungs-E-Mail im Postfach gefunden.'
+  };
+}
+
+/**
+ * ID 10: Prüft eine erfolgreiche Stornierung weit im Voraus (Frist eingehalten)
+ */
+function testSuccessfulCancellation() {
+  const targetDate = getFutureDate(4); // 4 Tage in der Zukunft (Frist 24h locker eingehalten)
+  
+  // 1. Erst buchen
+  createTestEmail({ body: `Datum: ${targetDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Wird storniert` });
+  labelTestEmails();
+  processReservationEmails();
+  
+  // 2. Stornierungs-Mail senden
+  createTestEmail({ 
+    subject: 'Stornierung Boot', 
+    body: `Datum: ${targetDate}\nSlot: Nachmittag` 
+  });
+  labelTestEmails();
+  processReservationEmails(); // Verarbeitet Stornierung
+  
+  Utilities.sleep(2000);
+
+  const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
+  
+  const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+  const parts = targetDate.split('.');
+  const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
+  const events = calendar.getEventsForDay(parsedDate);
+  const event = events.find(e => e.getTitle().includes(myName));
+  
+  // Bestanden, wenn kein Kalendereintrag mehr existiert
+  const passed = !event;
+
+  return {
+    name: 'ID 10 – Erfolgreiche Stornierung (Frist eingehalten)',
+    passed: passed,
+    message: passed 
+      ? 'Der Termin wurde nach der Stornierungsanfrage erfolgreich aus dem Kalender gelöscht.' 
+      : 'Der Termin existiert trotz Stornierung weiterhin im Kalender.'
+  };
+}
+
+/**
+ * ID 11: Prüft die Ablehnung einer Stornierung am selben Tag (Frist verletzt)
+ */
+function testRejectedCancellation() {
+  const todayDate = getFutureDate(0); // Heute buchen & stornieren versuchen -> Verletzt die 24h-Frist
+  
+  // 1. Provisorisch für heute buchen
+  createTestEmail({ body: `Datum: ${todayDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Kurzfrist-Test` });
+  labelTestEmails();
+  processReservationEmails();
+  
+  // 2. Sofort stornieren versuchen
+  createTestEmail({ 
+    subject: 'Absage Termin', 
+    body: `Datum: ${todayDate}\nSlot: Nachmittag` 
+  });
+  labelTestEmails();
+  processReservationEmails();
+  
+  Utilities.sleep(2000);
+  
+  const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
+  const passed = labelAbgelehnt ? labelAbgelehnt.getThreads().length > 0 : false;
+
+  return {
+    name: 'ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)',
+    passed: passed,
+    message: passed 
+      ? 'Kurzfristige Stornierung wurde richtigerweise blockiert und die Anfrage zu "Abgelehnt" verschoben.' 
+      : 'Die Stornierung wurde trotz verletzter Frist durchgeführt oder nicht korrekt einsortiert.'
   };
 }
 
@@ -253,7 +349,11 @@ function testScalability() {
   const durationInSeconds = (processEnd - processStart) / 1000;
   
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
-  const endDate = new Date(getFutureDate(100)); 
+  
+  // Datum für das Ende des Suchbereichs parsen
+  const maxDateStr = getFutureDate(100);
+  const parts = maxDateStr.split('.');
+  const endDate = new Date(parts[2], parts[1] - 1, parts[0]);
   
   const allEvents = calendar.getEvents(startTime, endDate);
   const loadEventsCount = allEvents.filter(e => e.getDescription().includes('Lasttest')).length;
@@ -273,13 +373,16 @@ function testScalability() {
    HILFSFUNKTIONEN (UTILITIES) – MIT TEST-ARCHIV LABELLING
    ========================================================================== */
 
+/**
+ * Generiert ein Zukunftsdatum direkt im neuen Format DD.MM.YYYY
+ */
 function getFutureDate(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return `${day}.${month}.${year}`; // Geändert auf DD.MM.YYYY
 }
 
 function createTestEmail({subject = 'Reservierung', body}) {
@@ -288,7 +391,7 @@ function createTestEmail({subject = 'Reservierung', body}) {
 
 function labelTestEmails() {
   Utilities.sleep(3500); 
-  const threads = GmailApp.search('is:unread from:me subject:"Reservierung"');
+  const threads = GmailApp.search('is:unread from:me (subject:"Reservierung" OR subject:"Stornierung" OR subject:"Absage")');
   const label = GmailApp.getUserLabelByName("Reservierung/Neu");
   
   if (label && threads.length > 0) {
@@ -307,7 +410,7 @@ function cleanupOldTestMails() {
     labelArchiv = GmailApp.createLabel(archivLabelName);
   }
   
-  const threads = GmailApp.search('from:me "Reservierung" OR "stornierung" OR "Buchung"');
+  const threads = GmailApp.search('from:me "Reservierung" OR "stornierung" OR "Buchung" OR "Absage"');
   
   threads.forEach(thread => {
     if(labelNeu) labelNeu.removeFromThread(thread);
@@ -322,7 +425,7 @@ function cleanupOldTestMails() {
   Logger.log("   -> Mails nach 'Reservierung/Test-Archiv' verschoben.");
 
   try {
-const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+    const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
     const start = new Date();
     const end = new Date();
     end.setDate(start.getDate() + 40); 
@@ -333,7 +436,7 @@ const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
 
     let deletedCount = 0;
     events.forEach(e => {
-      if (e.getTitle().includes(myName) || e.getDescription().includes('Lasttest')) {
+      if (e.getTitle().includes(myName) || e.getDescription().includes('Lasttest') || e.getDescription().includes('Kurzfrist-Test') || e.getDescription().includes('Wird storniert')) {
         e.deleteEvent();
         deletedCount++;
       }
