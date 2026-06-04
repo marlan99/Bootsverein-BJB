@@ -4,7 +4,7 @@
 // ===============================================
 
 const CONFIG = {
-  CALENDAR_ID: 'DEINE KALENDER ID', // <--- Hier die KALENDER ID eintragen
+  CALENDAR_ID: 'Bootsclub1890@gmail.com', // <--- Hier die KALENDER ID eintragen
   SHEET_CONFIG_ID: 'DEINE GOOGLE SHEET ID', // <--- Hier die ID der Google Tabelle eintragen    
   GMAIL_LABEL: 'Reservierung/Neu',               
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
