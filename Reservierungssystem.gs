@@ -5,12 +5,10 @@
 
 const CONFIG = {
   CALENDAR_ID: 'DEINE KALENDER ID', // <--- Hier die KALENDER ID eintragen
-  GMAIL_LABEL: 'Reservierung/Neu',               
   SHEET_CONFIG_ID: 'DEINE GOOGLE SHEET ID', // <--- Hier die ID der Google Tabelle eintragen    
-  SLOT_VORMITTAG: { start: '06:00', end: '14:00' },
+  GMAIL_LABEL: 'Reservierung/Neu',               
+  SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
-  JOKER_MAX_WEEKS: 6, // Maximal 6 Wochen in der Zukunft
-  STANDARD_MAX_DAYS: 14,
   ADMIN_EMAIL: 'Bootsclub1890@gmail.com'
 };
 
@@ -258,13 +256,11 @@ function validateRequest(data, userId, sender) {
 
   // === LOGIK FÜR JOKER-TERMINE ===
   if (data.type === 'joker') {
-    // Nur Maximalfrist prüfen (Zukunftssperre)
-    const maxJokerDate = new Date(today);
-    maxJokerDate.setDate(today.getDate() + CONFIG.JOKER_MAX_WEEKS * 7);
-    if (data.parsedDate > maxJokerDate) {
+    // Zukunftssperre: Nur innerhalb des aktuellen Kalenderjahres erlaubt
+    if (data.parsedDate.getFullYear() !== today.getFullYear()) {
       return { 
         valid: false, 
-        error: `Joker-Termine dürfen maximal ${CONFIG.JOKER_MAX_WEEKS} Wochen in der Zukunft liegen. Der späteste mögliche Tag ist der: ${formatDateDDMMYYYY(maxJokerDate)}` 
+        error: `Joker-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` 
       };
     }
 
@@ -289,34 +285,38 @@ function validateRequest(data, userId, sender) {
 
   // === LOGIK FÜR STANDARD-TERMINE ===
   if (data.type === 'standard') {
-    const maxFutureDate = new Date(today);
-    maxFutureDate.setDate(today.getDate() + CONFIG.STANDARD_MAX_DAYS);
-
-    // Zukunftssperre (Maximal 2 Wochen im Voraus)
-    if (data.parsedDate > maxFutureDate) {
+    // Zukunftssperre: Nur innerhalb des aktuellen Kalenderjahres erlaubt
+    if (data.parsedDate.getFullYear() !== today.getFullYear()) {
       return {
         valid: false,
-        error: `Buchungstermine dürfen maximal 2 Wochen in der Zukunft liegen. Der späteste mögliche Tag ist der: ${formatDateDDMMYYYY(maxFutureDate)}`
+        error: `Standard-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.`
       };
     }
 
-    // Alle Termine im relevanten 2-Wochen-Fenster holen
-    const existingEvents = calendar.getEvents(today, maxFutureDate);
+    // Saison entspricht dem aktuellen Kalenderjahr (1. Januar bis 31. Dezember)
+    const seasonStart = new Date(today.getFullYear(), 0, 1);
+    const seasonEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
 
-    // Schliesst JOKER aus (da diese nicht das Limit von 1 Termin pro 2 Wochen belasten).
-    // Präzise Filterung über die Mitglieder-ID
-    const standardEvents = existingEvents.filter(e => {
+    // Alle Termine des aktuellen Jahres abfragen
+    const existingEvents = calendar.getEvents(seasonStart, seasonEnd);
+
+    // Filtert anstehende Standard-Termine dieses Mitglieds heraus
+    const activeStandardEvents = existingEvents.filter(e => {
       const desc = e.getDescription() || '';
       const title = e.getTitle() || '';
-      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && !title.includes('JOKER');
+      const eventStart = e.getStartTime();
+      
+      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && 
+             !title.includes('JOKER') && 
+             eventStart >= today; // Blockiert nur, wenn der Termin noch ansteht oder heute läuft
     });
 
-    if (standardEvents.length > 0) {
-      const nextAvailable = new Date(standardEvents[0].getEndTime());
-      nextAvailable.setDate(nextAvailable.getDate() + 1);
+    // Wenn bereits ein zukünftiger Standard-Termin existiert, wird die Buchung abgelehnt
+    if (activeStandardEvents.length > 0) {
+      const bestehenderTermin = activeStandardEvents[0];
       return {
         valid: false,
-        error: `Du hast bereits einen Termin in den nächsten 2 Wochen gebucht. Nächster mögliche Buchungszeitpunkt ist: ${formatDateDDMMYYYY(nextAvailable)}`
+        error: `Du hast bereits einen Standard-Termin in dieser Saison gebucht (am ${formatDateDDMMYYYY(bestehenderTermin.getStartTime())}). Erst wenn dieser Termin vorbei ist, kannst du einen neuen Standard-Termin vereinbaren.`
       };
     }
   }
@@ -432,8 +432,7 @@ function sendRejectionEmail(to, reason, thread) {
 
 function getCurrentSeasonStart() {
   const today = new Date();
-  const year = today.getMonth() < 6 ? today.getFullYear() - 1 : today.getFullYear();
-  return new Date(year, 6, 1); 
+  return new Date(today.getFullYear(), 0, 1); // 1. Januar des aktuellen Jahres
 }
 
 function setupTriggers() {
@@ -652,7 +651,7 @@ function sendDailyReservationReminders() {
     
     if (emailMatch && emailMatch[1]) {
       const memberEmail = emailMatch[1].trim();
-      const slotName = event.getStartTime().getHours() === 6 ? "Vormittag (06:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
+      const slotName = event.getStartTime().getHours() === 8 ? "Vormittag (08:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
       
       const subject = `Erinnerung: Deine Boot Buchung für morgen!`;
       let body = `Hallo!\n\nDies ist die automatische Erinnerung für deine anstehende Reservierung:\n\n`;
