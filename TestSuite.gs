@@ -4,9 +4,17 @@
  * * VORAUSSETZUNG: Deine E-Mail-Adresse muss in der Whitelist-Tabelle eingetragen sein!
  */
 
-// Konfiguration für die Testsuite
+// Konfiguration für die Testsuite: Hier kannst du jeden Test einzeln steuern
 const TEST_CONFIG = {
-  RUN_SCALABILITY_TEST: false // <--- Auf 'true' setzen, um den Skalierungstest auszuführen
+  RUN_TEST_VALID_RESERVATION: true,      // ID 1,2,5 – Gültige Reservierung & Zusatzinfos
+  RUN_TEST_STANDARD_LIMIT: true,         // ID 3 – Standard-Limit (< 14 Tage)
+  RUN_TEST_SLOT_TIMES: true,             // ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)
+  RUN_TEST_INVALID_FORMAT: true,         // ID 9 – Intuitive Fehlermeldung bei Falschformat
+  RUN_TEST_REMINDER: true,               // ID 6 – Erinnerungsfunktion
+  RUN_TEST_SUCCESSFUL_CANCELLATION: true,// ID 10 – Erfolgreiche Stornierung
+  RUN_TEST_REJECTED_CANCELLATION: true,  // ID 11 – Abgelehnte Stornierung (24h-Frist)
+  RUN_TEST_EUROPEAN_DATE_FORMATS: true,  // ID 12 – Flexibles europäisches Datums-Parsing
+  RUN_SCALABILITY_TEST: false            // ID 7 – Skalierungstest (Systemstabilität)
 };
 
 function runAllTests() {
@@ -18,58 +26,98 @@ function runAllTests() {
   // -----------------------------------------------------------------
   // TESTCASE 1
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 1,2,5 – Gültige Reservierung & Zusatzinfos");
-  cleanupOldTestMails();
-  results.push(testValidReservation());
+  if (TEST_CONFIG.RUN_TEST_VALID_RESERVATION) {
+    Logger.log("\n[START] Testcase: ID 1,2,5 – Gültige Reservierung & Zusatzinfos");
+    cleanupOldTestMails();
+    results.push(testValidReservation());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 1,2,5 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 1,2,5 – Gültige Reservierung & Zusatzinfos', skipped: true });
+  }
 
   // -----------------------------------------------------------------
   // TESTCASE 2
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 3 – Standard-Limit (< 14 Tage)");
-  cleanupOldTestMails();
-  results.push(testStandardLimit());
+  if (TEST_CONFIG.RUN_TEST_STANDARD_LIMIT) {
+    Logger.log("\n[START] Testcase: ID 3 – Standard-Limit (< 14 Tage)");
+    cleanupOldTestMails();
+    results.push(testStandardLimit());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 3 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 3 – Standard-Limit (< 14 Tage)', skipped: true });
+  }
 
   // -----------------------------------------------------------------
   // TESTCASE 3
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)");
-  cleanupOldTestMails();
-  results.push(testSlotTimes());
+  if (TEST_CONFIG.RUN_TEST_SLOT_TIMES) {
+    Logger.log("\n[START] Testcase: ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)");
+    cleanupOldTestMails();
+    results.push(testSlotTimes());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 8 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 8 – Slot-Zeiten (Vormittag = 06:00-14:00)', skipped: true });
+  }
 
   // -----------------------------------------------------------------
   // TESTCASE 4
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 9 – Intuitive Fehlermeldung bei Falschformat");
-  cleanupOldTestMails();
-  results.push(testInvalidFormat());
+  if (TEST_CONFIG.RUN_TEST_INVALID_FORMAT) {
+    Logger.log("\n[START] Testcase: ID 9 – Intuitive Fehlermeldung bei Falschformat");
+    cleanupOldTestMails();
+    results.push(testInvalidFormat());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 9 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 9 – Intuitive Fehlermeldung bei Falschformat', skipped: true });
+  }
 
   // -----------------------------------------------------------------
   // TESTCASE 5
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 6 – Erinnerungsfunktion");
-  cleanupOldTestMails();
-  results.push(testReminder());
+  if (TEST_CONFIG.RUN_TEST_REMINDER) {
+    Logger.log("\n[START] Testcase: ID 6 – Erinnerungsfunktion");
+    cleanupOldTestMails();
+    results.push(testReminder());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 6 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 6 – Erinnerungsfunktion (E-Mail an Buchenden)', skipped: true });
+  }
 
   // -----------------------------------------------------------------
   // TESTCASE 6: Erfolgreiche Stornierung
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 10 – Erfolgreiche Stornierung (Frist eingehalten)");
-  cleanupOldTestMails();
-  results.push(testSuccessfulCancellation());
+  if (TEST_CONFIG.RUN_TEST_SUCCESSFUL_CANCELLATION) {
+    Logger.log("\n[START] Testcase: ID 10 – Erfolgreiche Stornierung (Frist eingehalten)");
+    cleanupOldTestMails();
+    results.push(testSuccessfulCancellation());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 10 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 10 – Erfolgreiche Stornierung (Frist eingehalten)', skipped: true });
+  }
 
   // -----------------------------------------------------------------
   // TESTCASE 7: Abgelehnte Stornierung
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)");
-  cleanupOldTestMails();
-  results.push(testRejectedCancellation());
+  if (TEST_CONFIG.RUN_TEST_REJECTED_CANCELLATION) {
+    Logger.log("\n[START] Testcase: ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)");
+    cleanupOldTestMails();
+    results.push(testRejectedCancellation());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 11 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)', skipped: true });
+  }
 
   // -----------------------------------------------------------------
-  // TESTCASE 8: Europäische Datumsformate (NEU angepasst)
+  // TESTCASE 8: Europäische Datumsformate
   // -----------------------------------------------------------------
-  Logger.log("\n[START] Testcase: ID 12 – Flexibles europäisches Datums-Parsing");
-  cleanupOldTestMails();
-  results.push(testEuropeanDateFormats());
+  if (TEST_CONFIG.RUN_TEST_EUROPEAN_DATE_FORMATS) {
+    Logger.log("\n[START] Testcase: ID 12 – Flexibles europäisches Datums-Parsing");
+    cleanupOldTestMails();
+    results.push(testEuropeanDateFormats());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 12 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 12 – Europäische Datumsformate', skipped: true });
+  }
 
   // -----------------------------------------------------------------
   // TESTCASE 9: Skalierungstest (OPTIONAL)
@@ -80,31 +128,40 @@ function runAllTests() {
     results.push(testScalability());
   } else {
     Logger.log("\n[INFO] Testcase: ID 7 – Skalierungstest übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 7 – Skalierungstest (Systemstabilität)', skipped: true });
   }
 
   // -----------------------------------------------------------------
-  // AUSWERTUNG & ZUSAMMENFASSUNG
+  // AUSWERTUNG & ZUSAMMENFASSUNG (angepasst für Skipped)
   // -----------------------------------------------------------------
-  const passed = results.filter(r => r.passed).length;
-  const total = results.length;
+  const activeResults = results.filter(r => !r.skipped);
+  const passed = activeResults.filter(r => r.passed).length;
+  const totalActive = activeResults.length;
+  const skipped = results.filter(r => r.skipped).length;
   
   Logger.log("\n=========================================");
-  Logger.log(`TEST-ERGEBNIS: ${passed}/${total} BESTANDEN`);
+  Logger.log(`TEST-ERGEBNIS: ${passed}/${totalActive} BESTANDEN (${skipped} übersprungen)`);
   Logger.log("=========================================");
   
   let emailBody = `Zusammenfassung des Testlaufs vom ${new Date().toLocaleString()}\n`;
-  emailBody += `Ergebnis: ${passed} von ${total} Tests bestanden.\n\nDetail-Log:\n`;
+  emailBody += `Ergebnis: ${passed} von ${totalActive} ausgeführten Tests bestanden. (${skipped} übersprungen)\n\nDetail-Log:\n`;
 
   results.forEach(r => {
-    const statusStr = r.passed ? '✅ PASS' : '❌ FAIL';
-    const logLine = `${statusStr} [${r.name}]: ${r.message}`;
+    let statusStr = '';
+    let msg = r.message || 'Test wurde in der Konfiguration deaktiviert.';
+    if (r.skipped) {
+      statusStr = '⚪ SKIPPED';
+    } else {
+      statusStr = r.passed ? '✅ PASS' : '❌ FAIL';
+    }
+    const logLine = `${statusStr} [${r.name}]: ${msg}`;
     Logger.log(logLine);
     emailBody += logLine + '\n';
   });
 
   // Ergebnis per E-Mail an den Admin senden
-  if (CONFIG && CONFIG.ADMIN_EMAIL) {
-    MailApp.sendEmail(CONFIG.ADMIN_EMAIL, `Testbericht Reservierungssystem: ${passed}/${total}`, emailBody);
+  if (CONFIG && CONFIG.ADMIN_EMAIL && totalActive > 0) {
+    MailApp.sendEmail(CONFIG.ADMIN_EMAIL, `Testbericht Reservierungssystem: ${passed}/${totalActive}`, emailBody);
     Logger.log(`\nTestbericht erfolgreich an ${CONFIG.ADMIN_EMAIL} gesendet.`);
   }
 }
@@ -336,7 +393,6 @@ function testEuropeanDateFormats() {
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
   const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
   
-  // Testet verschiedene typisch europäische Schreibweisen an unterschiedlichen Tagen im Kalender
   const formatsToTest = [
     { type: 'DOT_LEAD',   daysOut: 15, desc: '05.06.2026 (Mit führenden Nullen)' },
     { type: 'DOT_NO_LEAD', daysOut: 16, desc: '5.6.2026 (Ohne führende Nullen)' },
@@ -349,7 +405,6 @@ function testEuropeanDateFormats() {
   formatsToTest.forEach(item => {
     const formattedDateString = getFutureDate(item.daysOut, item.type);
     
-    // 1. Sende E-Mail mit dem jeweiligen europäisch formatierten Datum
     createTestEmail({
       subject: 'Reservierung',
       body: `Datum: ${formattedDateString}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Europäisches Format-Test ${item.type}`
@@ -358,7 +413,6 @@ function testEuropeanDateFormats() {
     processReservationEmails();
     Utilities.sleep(1500);
     
-    // 2. Prüfe, ob das Event am präzisen Zieltag eingetragen wurde
     const targetDateObj = new Date();
     targetDateObj.setDate(targetDateObj.getDate() + item.daysOut);
     
@@ -371,7 +425,6 @@ function testEuropeanDateFormats() {
       Logger.log(`   -> [FEHLER] Europäisches Format fehlgeschlagen: "${item.desc}" mit generiertem Text: '${formattedDateString}'`);
     }
     
-    // Aufräumen für den nächsten Formattest
     if (event) event.deleteEvent();
   });
   
@@ -431,11 +484,6 @@ function testScalability() {
    HILFSFUNKTIONEN (UTILITIES) – MIT TEST-ARCHIV LABELLING
    ========================================================================== */
 
-/**
- * Generiert ein Zukunftsdatum basierend auf dem gewünschten Formattyp
- * @param {number} days - Tage in der Zukunft
- * @param {string} format - Typ des Datumsformats
- */
 function getFutureDate(days, format) {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -451,14 +499,14 @@ function getFutureDate(days, format) {
 
   switch(format) {
     case 'DOT_NO_LEAD':
-      return `${dayNum}.${monthNum}.${year}`; // z.B. 5.6.2026
+      return `${dayNum}.${monthNum}.${year}`;
     case 'EU_SLASH':
-      return `${dayNum}/${monthNum}/${year}`; // z.B. 5/6/2026
+      return `${dayNum}/${monthNum}/${year}`;
     case 'DE_TEXT':
-      return `${dayNum}. ${deMonths[d.getMonth()]} ${year}`; // z.B. 5. Juni 2026
+      return `${dayNum}. ${deMonths[d.getMonth()]} ${year}`;
     case 'DOT_LEAD':
     default:
-      return `${dayLead}.${monthLead}.${year}`; // z.B. 05.06.2026
+      return `${dayLead}.${monthLead}.${year}`;
   }
 }
 
