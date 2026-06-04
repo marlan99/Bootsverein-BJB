@@ -500,8 +500,22 @@ function executeCancellation(data, userId, thread, message) {
     userEvent.deleteEvent(); 
     
     // 1. Antwort an das Mitglied senden
-    thread.reply(`Hallo ${data.name},\n\ndeine Reservierung für den ${data.parsedDate.toLocaleDateString('de-CH')} (${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}) wurde erfolgreich storniert. Der Slot ist wieder freigegeben.`);
-    
+    const slotFormatted = data.slot.charAt(0).toUpperCase() + data.slot.slice(1);
+    const dateFormatted = data.parsedDate.toLocaleDateString('de-CH');
+    const userBody = `Hallo ${data.name},\n\ndeine Reservierung für den ${dateFormatted} (${slotFormatted}) wurde erfolgreich storniert. Der Slot ist wieder freigegeben.`;
+    const userSubject = `Bestätigung: Termin am ${dateFormatted} freigegeben`;
+
+    try {
+      GmailApp.sendEmail(userId, userSubject, userBody, {
+        replyTo: CONFIG.ADMIN_EMAIL,
+        threadId: thread.getId() // Hält die E-Mail im selben Verlauf
+      });
+    } catch (userMailError) {
+      Logger.log(`⚠️ Fehler beim Senden der Bestätigung an Mitglied: ${userMailError.message}`);
+      // Fallback: Falls sendEmail fehlschlägt, als normalen Reply versuchen
+      thread.reply(userBody);
+    }
+
     // 2. Benachrichtigung an den Admin senden
     try {
       const adminSubject = `INFO: Buchung entfernt - ${data.name}`;
