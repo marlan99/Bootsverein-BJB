@@ -251,7 +251,7 @@ function testSlotTimes() {
 
   let passed = false;
   if (event) {
-    const  = event.getStartTime().getHours();
+    const startHour = event.getStartTime().getHours();
     const endHour = event.getEndTime().getHours();
     if (startHour === 8 && endHour === 14) { passed = true; }
   }
