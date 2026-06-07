@@ -10,7 +10,7 @@
 // ==========================================================================
 
 // Hier die E-Mail-Adresse eintragen, die bei den Tests und beim Whitelist-Check geprüft werden soll:
-const DEBUG_EMAIL = "Bootsclub1890@gmail.com";
+const DEBUG_EMAIL = ""; // Nutzt jetzt automatisch deinen aktiven Google-Account, wenn das Feld leer bleibt
 
 // Konfiguration für die Testsuite: Hier kannst du jeden Test einzeln steuern
 const TEST_CONFIG = {
@@ -267,10 +267,19 @@ function executeSingleDateFormatTest(item) {
    URSPRÜNGLICHE TESTFÄLLE (UNVERÄNDERT, testEuropeanDateFormats entfernt)
    ========================================================================== */
 
+/**
+ * ID 0: Testfall für die Whitelist-Prüfung
+ * Nutzt DEBUG_EMAIL oder fällt auf die eigene Account-E-Mail zurück, wenn das Feld leer ist.
+ */
 function testWhitelistCheck() {
   const scriptProperties = PropertiesService.getScriptProperties();
   const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
   
+  // Dynamische Ermittlung der Test-E-Mail (Fallback auf eigenen Account)
+  const targetEmail = (typeof DEBUG_EMAIL !== 'undefined' && DEBUG_EMAIL.trim() !== "") 
+    ? DEBUG_EMAIL.trim().toLowerCase() 
+    : Session.getActiveUser().getEmail().trim().toLowerCase();
+
   try {
     const ss = SpreadsheetApp.openById(sheetId);
     const sheet = ss.getSheets()[0];
@@ -281,12 +290,11 @@ function testWhitelistCheck() {
     }
     
     const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
-    const searchEmail = DEBUG_EMAIL.trim().toLowerCase();
     let gefunden = false;
     
     for (let i = 0; i < dataRange.length; i++) {
       if (!dataRange[i][3]) continue;
-      if (dataRange[i][3].toString().trim().toLowerCase() === searchEmail) {
+      if (dataRange[i][3].toString().trim().toLowerCase() === targetEmail) {
         gefunden = true;
         break;
       }
@@ -295,7 +303,9 @@ function testWhitelistCheck() {
     return {
       name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen',
       passed: gefunden,
-      message: gefunden ? `Adresse "${DEBUG_EMAIL}" erfolgreich in der Whitelist gefunden.` : `Adresse "${DEBUG_EMAIL}" fehlt in Spalte D der Tabelle.`
+      message: gefunden 
+        ? `Adresse "${targetEmail}" erfolgreich in der Whitelist gefunden.` 
+        : `Adresse "${targetEmail}" fehlt in Spalte D der Tabelle.`
     };
   } catch (e) {
     return { name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen', passed: false, message: 'Fehler beim Tabellenzugriff: ' + e.message };
@@ -580,25 +590,70 @@ function cleanupOldTestMails() {
   Utilities.sleep(2000); 
 }
 
+/**
+ * Unabhängiges Tool zur händischen Überprüfung der Whitelist.
+ * Nutzt DEBUG_EMAIL oder fällt auf die eigene Account-E-Mail zurück, wenn das Feld leer ist.
+ */
 function debugSpecificWhitelistEmail() {
   const scriptProperties = PropertiesService.getScriptProperties();
   const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
-  if (!sheetId) return;
+  if (!sheetId) {
+    Logger.log("❌ FEHLER: Es wurde keine Tabellen-ID ('SHEET_CONFIG_ID') in den Skripteigenschaften gefunden.");
+    return;
+  }
 
-  let ss = SpreadsheetApp.openById(sheetId);
+  let ss;
+  try {
+    ss = SpreadsheetApp.openById(sheetId);
+  } catch (e) {
+    Logger.log(`❌ FEHLER: Die Tabelle mit der ID "${sheetId}" konnte nicht geöffnet werden.`);
+    return;
+  }
+  
   const sheet = ss.getSheets()[0];
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return;
 
+  // Dynamische Ermittlung der Test-E-Mail (Fallback auf eigenen Account)
+  const targetEmail = (typeof DEBUG_EMAIL !== 'undefined' && DEBUG_EMAIL.trim() !== "") 
+    ? DEBUG_EMAIL.trim().toLowerCase() 
+    : Session.getActiveUser().getEmail().trim().toLowerCase();
+
   const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
-  const searchEmail = DEBUG_EMAIL.trim().toLowerCase();
   
+  Logger.log(`Gesuchte E-Mail-Adresse: "${targetEmail}"`);
+  Logger.log(`Untersuchtes Tabellenblatt: "${sheet.getName()}"`); 
+  Logger.log("--- Start Tabellen-Scan ---");
+  
+  let gefunden = false;
   for (let i = 0; i < dataRange.length; i++) {
     const row = dataRange[i];
     if (!row[3]) continue;
-    if (row[3].toString().trim().toLowerCase() === searchEmail) {
+    
+    if (row[3].toString().trim().toLowerCase() === targetEmail) {
       Logger.log(`✅ MATCH GEFUNDEN in Zeile ${i + 2}!`);
+      const id = row[0] ? row[0].toString().trim() : 'Keine ID';
+      const vorname = row[1] ? row[1].toString().trim() : '';
+      const nachname = row[2] ? row[2].toString().trim() : '';
+      
+      let vollerName = `${vorname} ${nachname}`.trim();
+      if (!vollerName) vollerName = targetEmail;
+      
+      const mobileRaw = row[4] ? row[4].toString().trim() : '';
+      const mobile = mobileRaw !== '' ? mobileRaw : 'Nicht hinterlegt';
+      
+      Logger.log(`   -> Extrahierte ID:       "${id}"`);
+      Logger.log(`   -> Vorname (Rohdaten):   "${vorname}"`);
+      Logger.log(`   -> Nachname (Rohdaten):  "${nachname}"`);
+      Logger.log(`   -> Generierter Name:     "${vollerName}"`);
+      Logger.log(`   -> Mobilnummer:          "${mobile}"`);
+      
+      gefunden = true;
       break;
     }
+  }
+  
+  if (!gefunden) {
+    Logger.log(`❌ FEHLER: Die Adresse "${targetEmail}" wurde in der Whitelist nicht gefunden.`);
   }
 }
