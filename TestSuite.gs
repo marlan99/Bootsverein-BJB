@@ -10,7 +10,7 @@
 // ==========================================================================
 
 // Hier die E-Mail-Adresse eintragen, die bei den Tests und beim Whitelist-Check geprüft werden soll:
-const DEBUG_EMAIL = "marcel.landolt72@gmail.com"; 
+const DEBUG_EMAIL = "Bootsclub1890@gmail.com"; 
 
 // Konfiguration für die Testsuite: Hier kannst du jeden Test einzeln steuern
 const TEST_CONFIG = {
