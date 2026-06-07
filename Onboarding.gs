@@ -5,9 +5,13 @@
 // ===============================================
 
 const ONBOARDING_CONFIG = {
+  // <--- SCHALTER FÜR DEN TESTMODUS --->
+  // true  = Mails werden abgefangen und NUR an den Vorstand gesendet (Sicherer Testmodus)
+  // false = Mails gehen direkt an die neuen Mitglieder und der Vorstand im CC (Live-Betrieb)
+  TEST_MODUS_AKTIV: true, 
+
   // <--- HIER DIE ID DEINER PDF-ANLEITUNG AUS GOOGLE DRIVE EINTRAGEN --->
-  // Du findest die ID in der Drive-Link-URL: https://drive.google.com/file/d/hier_steht_die_id/view
-  PDF_FILE_ID: 'HIER_DEINE_GOOGLE_DRIVE_FILE_ID_EINTRAGEN'
+  PDF_FILE_ID: 'PDF-ID-HIER-EINFÜGEN' 
 };
 
 /**
@@ -15,7 +19,8 @@ const ONBOARDING_CONFIG = {
  * Richte hierfür einen täglichen Zeitgesteuerten Trigger (z.B. morgens) ein.
  */
 function checkAndWelcomeNewMembers() {
-  Logger.log('=== STARTE PRÜFUNG AUF NEUE MITGLIEDER ===');
+  const modusText = ONBOARDING_CONFIG.TEST_MODUS_AKTIV ? '⚠️ TESTMODUS (AKTIV)' : '🚀 LIVE-BETRIEB';
+  Logger.log(`=== STARTE PRÜFUNG AUF NEUE MITGLIEDER [Modus: ${modusText}] ===`);
   
   // Überprüfung, ob das CONFIG-Objekt aus dem Hauptskript existiert
   if (typeof CONFIG === 'undefined' || !CONFIG.SHEET_CONFIG_ID || !CONFIG.ADMIN_EMAIL) {
@@ -68,7 +73,7 @@ function checkAndWelcomeNewMembers() {
       if (!welcomedMemberIds.includes(memberId)) {
         
         if (!isInitialRun) {
-          // Neues Mitglied gefunden -> E-Mail mit PDF-Anhang senden
+          // Neues Mitglied gefunden -> E-Mail senden (Modus wird intern in der Funktion geprüft)
           sendWelcomeMail(email, vorname, nachname);
           mailsSentCount++;
         }
@@ -80,7 +85,7 @@ function checkAndWelcomeNewMembers() {
 
     // Aktualisierte Liste dauerhaft im Script speichern
     scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify(newWelcomedIds));
-    Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) begrüßt.`);
+    Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
   } catch (e) {
     Logger.log('Fehler im Onboarding-Script: ' + e.message);
@@ -90,14 +95,36 @@ function checkAndWelcomeNewMembers() {
 }
 
 /**
- * Versendet die Willkommens-E-Mail mit der PDF-Anleitung im Anhang und setzt den Vorstand ins CC
+ * Versendet die Willkommens-E-Mail (Berücksichtigt den eingestellten Test- oder Livemodus)
  */
 function sendWelcomeMail(toEmail, vorname, nachname) {
   const name = vorname ? vorname : 'Mitglied';
-  const subject = 'Herzlich willkommen beim Bootsclub 1890! ⛵';
   
-  // HTML-Inhalt der Mail (Anleitungstext gekürzt, da jetzt als PDF angehängt)
+  // Variablen deklarieren, die sich je nach Modus ändern
+  let finalReceiver = toEmail;
+  let finalCc = CONFIG.ADMIN_EMAIL; // Im Live-Modus geht der Vorstand standardmäßig ins CC
+  let subject = 'Herzlich willkommen beim Bootsclub 1890! ⛵';
+  let testNoticeHtml = '';
+  let testNoticePlain = '';
+
+  // Logik umschalten, falls der Testmodus aktiv ist
+  if (ONBOARDING_CONFIG.TEST_MODUS_AKTIV) {
+    finalReceiver = CONFIG.ADMIN_EMAIL; // Mail an Vorstand umleiten
+    finalCc = ''; // CC leeren, um Doppelversand an Vorstand zu vermeiden
+    subject = `[TEST-MODUS für: ${toEmail}] Herzlich willkommen beim Bootsclub 1890! ⛵`;
+    
+    testNoticeHtml = `
+      <div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 20px; color: #856404; font-family: sans-serif; border-radius: 4px;">
+        ⚠️ <b>SYSTEM-HINWEIS (TEST-MODUS):</b> Diese E-Mail wurde automatisch abgefangen und an den Vorstand umgeleitet.<br>
+        <b>Geplanter Empfänger im Live-Betrieb:</b> ${vorname} ${nachname} (&lt;${toEmail}&gt;)
+      </div>
+    `;
+    testNoticePlain = `[⚠️ TEST-MODUS - Geplanter Empfänger im Live-Betrieb: ${vorname} ${nachname} (${toEmail})]\n\n`;
+  }
+  
+  // Der eigentliche HTML-Inhalt der Willkommens-Mail
   const htmlBody = `
+    ${testNoticeHtml}
     Hallo ${name},<br><br>
     herzlich willkommen im <b>Bootsclub 1890</b>! Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.<br><br>
     
@@ -106,38 +133,42 @@ function sendWelcomeMail(toEmail, vorname, nachname) {
     
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
     • Sende Reservierungen an: <b>${CONFIG.ADMIN_EMAIL}</b><br>
-    • Die E-Mail muss die Zeilen <b>Datum:</b>, <b>Slot:</b> (Vormittag/Nachmittag) und <b>Typ:</b> (Standard/Joker) enthalten.<br>
-    • Für eine Stornierung sende einfach das Wort <b>"Stornierung"</b> im Betreff (bis max. 24 Stunden vor dem Termin).<br><br>
+    • Die E-Mail muss die Zeilen <b>Datum:</b>, <b>Slot:</b> (Vormittag/Nachmittag) und <b>Typ:</b> (Standard/Joker) enthalten.<br><br>
+    • Für eine Stornierung sende einfach das Wort <b>"Stornierung"</b> oder <b>"Absage"</b> im Betreff (bis max. 24 Stunden vor dem Termin).<br><br>
     
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
-    Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br>
+    Allzeit gute Fahrt und viel Spaß auf dem Wasser!<br><br>
     <b>Dein Vorstand</b>
   `;
 
-  const plainBody = `Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${CONFIG.ADMIN_EMAIL}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
+  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${CONFIG.ADMIN_EMAIL}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
 
   try {
-    // 1. PDF-Datei aus Google Drive holen
+    // PDF-Anleitung aus Google Drive holen
     const fileId = ONBOARDING_CONFIG.PDF_FILE_ID;
     if (!fileId || fileId === 'HIER_DEINE_GOOGLE_DRIVE_FILE_ID_EINTRAGEN') {
       throw new Error('Es wurde keine gültige Google Drive File ID für das PDF konfiguriert.');
     }
     
     const pdfFile = DriveApp.getFileById(fileId);
-    const attachmentBlob = pdfFile.getBlob(); // Holt die Datei als Binärobjekt (Blob)
+    const attachmentBlob = pdfFile.getBlob();
 
-    // 2. E-Mail mit Attachment versenden
-    GmailApp.sendEmail(toEmail, subject, plainBody, {
-      cc: CONFIG.ADMIN_EMAIL, // Vorstand aus Haupt-CONFIG im CC
+    // E-Mail senden mit den dynamisch gesetzten Empfängern
+    GmailApp.sendEmail(finalReceiver, subject, plainBody, {
+      cc: finalCc,
       replyTo: CONFIG.ADMIN_EMAIL,
       htmlBody: htmlBody,
-      attachments: [attachmentBlob] // Hier wird das PDF angehängt
+      attachments: [attachmentBlob]
     });
     
-    Logger.log(`Willkommens-E-Mail inkl. PDF-Anleitung erfolgreich gesendet an: ${toEmail}`);
+    if (ONBOARDING_CONFIG.TEST_MODUS_AKTIV) {
+      Logger.log(`[TEST] Mail für ${toEmail} wurde erfolgreich an den Vorstand (${finalReceiver}) umgeleitet.`);
+    } else {
+      Logger.log(`[LIVE] Willkommens-E-Mail erfolgreich direkt gesendet an: ${toEmail}`);
+    }
   } catch (error) {
-    Logger.log(`❌ FEHLER beim Senden der Willkommens-Mail an ${toEmail}: ${error.message}`);
+    Logger.log(`❌ FEHLER beim Senden der E-Mail (Ziel: ${finalReceiver}): ${error.message}`);
   }
 }
 
