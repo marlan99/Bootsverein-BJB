@@ -78,7 +78,7 @@ function checkAndWelcomeNewMembers() {
       Logger.log(`🧹 BEREINIGUNG: ${removedCount} gelöschte(s) Mitglied(er) aus dem Skript-Gedächtnis entfernt.`);
     }
 
-    // 3. SCHRITT: Neue Mitglieder prüfen und begrüßen
+    // 3. SCHRITT: Neue Mitglieder prüfen und begrüssen
     let mailsSentCount = 0;
 
     for (let i = 0; i < dataRange.length; i++) {
