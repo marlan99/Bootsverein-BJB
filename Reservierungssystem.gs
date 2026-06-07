@@ -5,8 +5,8 @@
 
 const CONFIG = {
   // <--- KALENDER & ADMIN EINSTELLUNGEN --->
-  CALENDAR_ID: 'marcel.landolt72@gmail.com', // Hier die KALENDER ID eintragen
-  ADMIN_EMAIL: 'marcel.landolt72@gmail.com',
+  CALENDAR_ID: 'Bootsclub1890@gmail.com', // Hier die KALENDER ID eintragen
+  ADMIN_EMAIL: 'Bootsclub1890@gmail.com',
   GMAIL_LABEL: 'Reservierung/Neu',               
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
@@ -16,7 +16,7 @@ const CONFIG = {
   // false = Mails gehen direkt an die neuen Mitglieder und der Vorstand im CC
   TEST_MODUS_AKTIV: true, 
   // Hier die ID deiner PDF-Anleitung aus Google Drive eintragen
-  PDF_FILE_ID: '12JX2sj5wX2hgeAB1ygZ64YbF0LMuVymw',
+  PDF_FILE_ID: 'HIER-DIE-PDF-ID-EINTRAGEN', // Hier die PDF ID eintragen
   // Einstellungen für den automatischen Excel-Listenimport
   EXCEL_SUBJECT: 'Mitgliederliste',
   EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
@@ -735,14 +735,14 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
   const name = vorname ? vorname : 'Mitglied';
   
   let finalReceiver = toEmail;
-  let finalCc = adminEmail; 
+  let finalCc = adminEmail; // Im Live-Modus erhält der Vorstand standardmässig ein CC
   let subject = 'Herzlich willkommen beim Bootsclub 1890! ⛵';
   let testNoticeHtml = '';
   let testNoticePlain = '';
 
   if (CONFIG.TEST_MODUS_AKTIV) {
     finalReceiver = adminEmail; 
-    finalCc = ''; 
+    finalCc = ''; // Im Test-Modus kein CC nötig, da Receiver bereits der Admin ist
     subject = `[TEST-MODUS für: ${toEmail}] Herzlich Willkommen beim Bootsclub 1890! ⛵`;
     
     testNoticeHtml = `
@@ -779,7 +779,7 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
     const attachmentBlob = pdfFile.getBlob();
 
     GmailApp.sendEmail(finalReceiver, subject, plainBody, {
-      cc: finalCc,
+      cc: finalCc, // Setzt die E-Mail im Live-Betrieb automatisch in Kopie für den Vorstand
       replyTo: adminEmail,
       htmlBody: htmlBody,
       attachments: [attachmentBlob]
