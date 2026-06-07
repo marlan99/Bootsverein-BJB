@@ -132,7 +132,7 @@ function sendWelcomeMail(toEmail, vorname, nachname) {
   if (ONBOARDING_CONFIG.TEST_MODUS_AKTIV) {
     finalReceiver = CONFIG.ADMIN_EMAIL; // Mail an Vorstand umleiten
     finalCc = ''; // CC leeren, um Doppelversand an Vorstand zu vermeiden
-    subject = `[TEST-MODUS für: ${toEmail}] Herzlich willkommen beim Bootsclub 1890! ⛵`;
+    subject = `[TEST-MODUS für: ${toEmail}] Herzlich Willkommen beim Bootsclub 1890! ⛵`;
     
     testNoticeHtml = `
       <div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 20px; color: #856404; font-family: sans-serif; border-radius: 4px;">
@@ -147,14 +147,14 @@ function sendWelcomeMail(toEmail, vorname, nachname) {
   const htmlBody = `
     ${testNoticeHtml}
     Hallo ${name},<br><br>
-    herzlich willkommen im <b>Bootsclub 1890</b>! Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.<br><br>
+    Herzlich Willkommen im <b>Bootsclub 1890</b>! Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.<br><br>
     
     Ab sofort kannst du Bootstermine direkt per E-Mail reservieren. <br>
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
     • Sende Reservierungen an: <b>${CONFIG.ADMIN_EMAIL}</b>. Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br>
-    • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text senden (bis max. 24 Stunden vor dem Termin).<br><br>
+    • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text (bis max. 24 Stunden vor dem Termin).<br><br>
     
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
