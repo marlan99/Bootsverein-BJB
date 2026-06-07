@@ -7,9 +7,9 @@
 const PDF_SOURCE_URL = 'https://github.com/marlan99/Bootsverein-BJB/blob/main/Anleitung%20Bootsreservation.pdf';
 
 const CONFIG = {
-  // <--- KALENDER & ADMIN EINSTELLUNGEN --->
-  CALENDAR_ID: 'Bootsclub1890@gmail.com', // Hier die KALENDER ID eintragen
-  ADMIN_EMAIL: 'Bootsclub1890@gmail.com',
+// <--- KALENDER & ADMIN EINSTELLUNGEN --->
+  CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
+  ADMIN_EMAIL: Session.getActiveUser().getEmail(),
   GMAIL_LABEL: 'Reservierung/Neu',               
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
@@ -261,7 +261,8 @@ function validateRequest(data, userId, sender) {
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+  // Falls CALENDAR_ID leer ist, verwende den Standardkalender, andernfalls hole ihn per ID
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
 
   if (!calendar) {
     return { valid: false, error: 'Konfigurationsfehler: Kalender wurde nicht gefunden.' };
@@ -349,7 +350,7 @@ function validateRequest(data, userId, sender) {
 
 function createCalendarEvent(data, userId) {
   try {
-    const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+    const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
     let title = data.type === 'joker' ? `JOKER – ${data.name}` : data.name;
 
     const description = [
