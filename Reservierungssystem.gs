@@ -5,7 +5,6 @@
 
 const CONFIG = {
   CALENDAR_ID: 'Bootsclub1890@gmail.com', // <--- Hier die KALENDER ID eintragen
-  SHEET_CONFIG_ID: 'DEINE GOOGLE SHEET ID', // <--- Hier die ID der Google Tabelle eintragen    
   GMAIL_LABEL: 'Reservierung/Neu',               
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
@@ -159,13 +158,11 @@ function parseEmailTemplate(body) {
 
 /**
  * INTELLIGENTER PARSER FÜR EUROPÄISCHE DATUMSFORMATE
- * Konvertiert: DD.MM.YYYY, D.M.YYYY, DD/MM/YYYY, D/M/YYYY sowie "D. Monatsname YYYY"
  */
 function parseEuropeanDate(dateStr) {
   if (!dateStr) return null;
   dateStr = dateStr.trim();
   
-  // 1. Fall: Deutscher Freitext-Monat (z.B. "5. Juni 2026" oder "05. Juni 2026")
   const textMonthRegex = /^(\d{1,2})\.\s*([a-zA-ZäÄöÖüÜß]+)\s*(\d{4})$/;
   const textMatch = dateStr.match(textMonthRegex);
   if (textMatch) {
@@ -181,28 +178,24 @@ function parseEuropeanDate(dateStr) {
     };
     
     if (months[monthName] !== undefined) {
-      return new Date(year, months[monthName], day, 12, 0, 0); // 12:00 Uhr verhindert Zeitzonensprünge
+      return new Date(year, months[monthName], day, 12, 0, 0);
     }
   }
   
-  // 2. Fall: Rein numerisch mit Punkten oder Slashes (z.B. 05.06.2026, 5.6.2026, 5/6/2026)
-  // Expliziter Schutz: Zerlegung von links nach rechts (Tag vor Monat)
   const numericRegex = /^(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})$/;
   const numMatch = dateStr.match(numericRegex);
   if (numMatch) {
     const day = parseInt(numMatch[1], 10);
-    const month = parseInt(numMatch[2], 10) - 1; // JS-Monate sind 0-basiert
+    const month = parseInt(numMatch[2], 10) - 1;
     const year = parseInt(numMatch[3], 10);
     
     const parsedDate = new Date(year, month, day, 12, 0, 0);
     
-    // Validierungs-Schutz (verhindert fiktive Daten wie den 31.02.)
     if (parsedDate.getFullYear() === year && parsedDate.getMonth() === month && parsedDate.getDate() === day) {
       return parsedDate;
     }
   }
   
-  // Fallback für native ISO-Formate (YYYY-MM-DD), falls vorhanden
   const fallbackDate = new Date(dateStr);
   if (!isNaN(fallbackDate.getTime())) {
     return fallbackDate;
@@ -211,11 +204,6 @@ function parseEuropeanDate(dateStr) {
   return null;
 }
 
-/**
- * Formatiert ein Datumsobjekt strikt in das Format DD.MM.YYYY mit führenden Nullen
- * @param {Date} date - Das zu formatierende Datum
- * @return {string} - Das formatierte Datum (z.B. 30.06.2026)
- */
 function formatDateDDMMYYYY(date) {
   if (!date || isNaN(date.getTime())) return 'Ungültiges Datum';
   const day = String(date.getDate()).padStart(2, '0');
@@ -225,7 +213,6 @@ function formatDateDDMMYYYY(date) {
 }
 
 function validateRequest(data, userId, sender) {
-  // === 0. PRÜFUNG & DATEN RECHERCHE: Ist der Absender auf der Whitelist? ===
   const memberData = getAuthorizedUserData(userId);
   
   if (!memberData) {
@@ -235,10 +222,8 @@ function validateRequest(data, userId, sender) {
     };
   }
   
-  // Die echten, geprüften Daten aus der Excel/Google-Tabelle an "data" anheften
   data.memberId = memberData.id;
   data.memberMobile = memberData.mobile;
-  // Optional: Überschreibt den Namen aus der E-Mail mit dem offiziellen Namen aus der Tabelle
   if (memberData.name) data.name = memberData.name;
   
   const today = new Date();
@@ -249,14 +234,11 @@ function validateRequest(data, userId, sender) {
     return { valid: false, error: 'Konfigurationsfehler: Kalender wurde nicht gefunden.' };
   }
 
-  // 1. Prüfung: Liegt das Datum in der Vergangenheit?
   if (data.parsedDate < today) {
     return { valid: false, error: 'Datum liegt in der Vergangenheit.' };
   }
 
-  // === LOGIK FÜR JOKER-TERMINE ===
   if (data.type === 'joker') {
-    // Zukunftssperre: Nur innerhalb des aktuellen Kalenderjahres erlaubt
     if (data.parsedDate.getFullYear() !== today.getFullYear()) {
       return { 
         valid: false, 
@@ -268,10 +250,8 @@ function validateRequest(data, userId, sender) {
     const seasonEnd = new Date(seasonStart);
     seasonEnd.setFullYear(seasonStart.getFullYear() + 1);
 
-    // Alle Termine der Saison holen
     const allEvents = calendar.getEvents(seasonStart, seasonEnd);
 
-    // Präzise Filterung über die Mitglieder-ID
     const jokerEvents = allEvents.filter(e => {
       const desc = e.getDescription() || '';
       const title = e.getTitle() || '';
@@ -283,9 +263,7 @@ function validateRequest(data, userId, sender) {
     }
   }
 
-  // === LOGIK FÜR STANDARD-TERMINE ===
   if (data.type === 'standard') {
-    // Zukunftssperre: Nur innerhalb des aktuellen Kalenderjahres erlaubt
     if (data.parsedDate.getFullYear() !== today.getFullYear()) {
       return {
         valid: false,
@@ -293,14 +271,11 @@ function validateRequest(data, userId, sender) {
       };
     }
 
-    // Saison entspricht dem aktuellen Kalenderjahr (1. Januar bis 31. Dezember)
     const seasonStart = new Date(today.getFullYear(), 0, 1);
     const seasonEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
 
-    // Alle Termine des aktuellen Jahres abfragen
     const existingEvents = calendar.getEvents(seasonStart, seasonEnd);
 
-    // Filtert anstehende Standard-Termine dieses Mitglieds heraus
     const activeStandardEvents = existingEvents.filter(e => {
       const desc = e.getDescription() || '';
       const title = e.getTitle() || '';
@@ -308,10 +283,9 @@ function validateRequest(data, userId, sender) {
       
       return desc.includes(`Mitglieder-ID: ${memberData.id}`) && 
              !title.includes('JOKER') && 
-             eventStart >= today; // Blockiert nur, wenn der Termin noch ansteht oder heute läuft
+             eventStart >= today;
     });
 
-    // Wenn bereits ein zukünftiger Standard-Termin existiert, wird die Buchung abgelehnt
     if (activeStandardEvents.length > 0) {
       const bestehenderTermin = activeStandardEvents[0];
       return {
@@ -321,7 +295,6 @@ function validateRequest(data, userId, sender) {
     }
   }
 
-  // === PRÜFUNG AUF SLOT-ÜBERSCHNEIDUNG ===
   const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
   const startTime = new Date(data.parsedDate);
   const [sh, sm] = slotTime.start.split(':');
@@ -367,9 +340,7 @@ function createCalendarEvent(data, userId) {
       title,
       data.startTime,
       data.endTime,
-      {
-        description: description,
-      }
+      { description: description }
     );
 
     if (data.type === 'joker') {
@@ -407,7 +378,7 @@ function sendConfirmationEmail(to, event, data, thread) {
       htmlBody: htmlBody 
     });
   } catch (error) {
-    Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Bestätigung für ${data.name} (Datum: ${formatDateDDMMYYYY(data.parsedDate)}) konnte nicht gesendet werden.`);
+    Logger.log(`⚠️ WARNUNG (E-Mail-Limit): Bestätigung für ${data.name} konnte nicht gesendet werden.`);
     if (thread) {
       thread.createDraftReply(plainBody, {
         htmlBody: `<b>[SYSTEM-NOTIZ: Mail-Limit erreicht - Entwurf generiert]</b><br><br>${htmlBody}`
@@ -432,7 +403,7 @@ function sendRejectionEmail(to, reason, thread) {
 
 function getCurrentSeasonStart() {
   const today = new Date();
-  return new Date(today.getFullYear(), 0, 1); // 1. Januar des aktuellen Jahres
+  return new Date(today.getFullYear(), 0, 1);
 }
 
 function setupTriggers() {
@@ -585,13 +556,79 @@ function executeCancellation(data, userId, thread, message) {
   }
 }
 
+/**
+ * Holt die Mitgliederdaten. Liest die ID aus den Skripteigenschaften aus.
+ * Sucht/Erstellt den Ordner "Google Kalender Reservierungssystem" und legt dort bei Erstausführung das Dokument an.
+ */
 function getAuthorizedUserData(email) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+  
+  let ss;
+  let sheet;
+
   try {
-    const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
-    const sheet = ss.getSheets()[0]; 
-    
-    if (!sheet) return null;
-    
+    if (sheetId) {
+      ss = SpreadsheetApp.openById(sheetId);
+      sheet = ss.getSheets()[0];
+    }
+  } catch (e) {
+    Logger.log('Tabelle konnte mit gespeicherter ID nicht geöffnet werden. Überprüfe Existenz...');
+  }
+
+  // LOGIK FÜR DIE ERSTAUSFÜHRUNG: Wenn kein Sheet existiert oder es komplett leer ist
+  if (!ss || !sheet || sheet.getLastRow() === 0) {
+    try {
+      const folderName = "Google Kalender Reservierungssystem";
+      let targetFolder;
+      
+      // 1. Suche nach dem Ordner über den Namen
+      const folders = DriveApp.getFoldersByName(folderName);
+      if (folders.hasNext()) {
+        targetFolder = folders.next(); // Ordner existiert bereits
+        Logger.log(`Ordner "${folderName}" gefunden.`);
+      } else {
+        targetFolder = DriveApp.createFolder(folderName); // Ordner neu anlegen
+        Logger.log(`Ordner "${folderName}" existierte nicht und wurde neu erstellt.`);
+      }
+
+      // 2. Neues Google Sheet Dokument erstellen
+      ss = SpreadsheetApp.create('Mitgliederliste');
+      sheet = ss.getSheets()[0];
+      sheetId = ss.getId();
+      
+      // 3. Datei in den Zielordner verschieben und aus der "Ablage" entfernen
+      const file = DriveApp.getFileById(sheetId);
+      targetFolder.addFile(file);
+      DriveApp.getRootFolder().removeFile(file);
+
+      // 4. Spalten generieren
+      const headers = ["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile"];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, 5).setFontWeight("bold");
+
+      // 5. Ersten Eintrag generieren (Vorstand Boot)
+      const firstEntry = ["BJB-001", "Vorstand", "Boot", CONFIG.ADMIN_EMAIL, "Nicht hinterlegt"];
+      sheet.appendRow(firstEntry);
+      sheet.autoResizeColumns(1, 5);
+
+      // 6. ID dauerhaft in den Skripteigenschaften speichern
+      scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
+      
+      Logger.log('========================================================================');
+      Logger.log('🎉 INITIALISIERUNG ERFOLGREICH!');
+      Logger.log(`Die Datei "Mitgliederliste" liegt im Ordner: Drive -> ${folderName}`);
+      Logger.log('ID wurde automatisch in den Skripteigenschaften hinterlegt: ' + sheetId);
+      Logger.log('========================================================================');
+      
+    } catch (createError) {
+      Logger.log('Kritischer Fehler beim Erstellen der Ordner- oder Tabellenstruktur: ' + createError.message);
+      return null;
+    }
+  }
+
+  // Reguläres Auslesen der Mitgliederdaten
+  try {
     const lastRow = sheet.getLastRow();
     if (lastRow <= 1) return null; 
     
