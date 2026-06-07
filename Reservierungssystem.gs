@@ -1092,7 +1092,7 @@ function setupTriggers() {
 
   // SCHRITT 3: Alle 4 zeitgesteuerten Trigger neu anlegen
   // 1. Reservierungsverarbeitung (alle 5 Minuten)
-  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create();
 
   // 2. Tägliche Erinnerung um 04:00 Uhr morgens
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
@@ -1101,7 +1101,7 @@ function setupTriggers() {
   ScriptApp.newTrigger('checkAndWelcomeNewMembers').timeBased().everyDays(1).atHour(8).create();
 
   // 4. Stündlicher Excel-Import der Mitgliederliste
-  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyHours(1).create();
+  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(1).create();
 
   // SCHRITT 4: Erforderliche Gmail-Labels anlegen
   ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
