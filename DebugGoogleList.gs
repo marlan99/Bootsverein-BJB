@@ -1,16 +1,35 @@
+/**
+ * SEPARATES DEBUG-SKRIPT
+ * zur Überprüfung einer bestimmten E-Mail-Adresse in der Whitelist.
+ * * Anleitung: Füge diesen Code in eine neue, separate .gs-Datei in deinem Projekt ein.
+ */
+
 function debugSpecificWhitelistEmail() {
   // ==========================================
   // HIER DIE ZU PRÜFENDE E-MAIL EINTRAGEN:
   const testEmail = "Bootsclub1890@gmail.com"; 
   // ==========================================
 
-  const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+
+  if (!sheetId) {
+    Logger.log("❌ FEHLER: Es wurde keine Tabellen-ID ('SHEET_CONFIG_ID') in den Skripteigenschaften gefunden. Wurde das Hauptsystem bereits initialisiert?");
+    return;
+  }
+
+  let ss;
+  try {
+    ss = SpreadsheetApp.openById(sheetId);
+  } catch (e) {
+    Logger.log(`❌ FEHLER: Die Tabelle mit der ID "${sheetId}" konnte nicht geöffnet werden.`);
+    return;
+  }
   
-  // ÄNDERUNG 1: Holt automatisch das ERSTE Tabellenblatt (Index 0) statt über den Namen
+  // Holt automatisch das ERSTE Tabellenblatt (Index 0)
   const sheet = ss.getSheets()[0];
   
   if (!sheet) {
-    // ÄNDERUNG 2: Log-Nachricht angepasst, da SHEET_WHITELIST_NAME nicht mehr existiert
     Logger.log(`❌ FEHLER: Kein Tabellenblatt in der Datei gefunden.`);
     return;
   }
