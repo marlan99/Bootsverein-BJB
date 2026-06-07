@@ -1,12 +1,20 @@
 /**
- * TestSuite.gs
- * Automatisiertes Testskript für das E-Mail-basierte Reservierungssystem
- * * ANLEITUNG: Füge diesen Code in eine neue, separate .gs-Datei in deinem Projekt ein.
+ * TestSuiteAndDebug.gs
+ * Automatisiertes Testskript & Whitelist-Check für das E-Mail-basierte Reservierungssystem
+ * * * ANLEITUNG: Füge diesen Code in eine neue, separate .gs-Datei in deinem Projekt ein.
  * VORAUSSETZUNG: Deine eigene E-Mail-Adresse muss in der Whitelist-Tabelle eingetragen sein!
  */
 
+// ==========================================================================
+// GLOBALE KONFIGURATION FÜR TESTS & DEBUGGING
+// ==========================================================================
+
+// Hier die E-Mail-Adresse eintragen, die bei den Tests und beim Whitelist-Check geprüft werden soll:
+const DEBUG_EMAIL = "marcel.landolt72@gmail.com"; 
+
 // Konfiguration für die Testsuite: Hier kannst du jeden Test einzeln steuern
 const TEST_CONFIG = {
+  RUN_TEST_WHITELIST_CHECK: true,        // NEU: ID 0 – Prüft, ob DEBUG_EMAIL in der Whitelist existiert
   RUN_TEST_VALID_RESERVATION: true,      // ID 1,2,5 – Gültige Reservierung & Zusatzinfos
   RUN_TEST_STANDARD_LIMIT: true,         // ID 3 – Saison-Limit (1 aktiver Termin parallel)
   RUN_TEST_SLOT_TIMES: true,             // ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)
@@ -17,6 +25,10 @@ const TEST_CONFIG = {
   RUN_TEST_EUROPEAN_DATE_FORMATS: false, // ID 12 – Flexibles europäisches Datums-Parsing
   RUN_SCALABILITY_TEST: false             // ID 7 – Skalierungstest (Systemstabilität)
 };
+
+// ==========================================================================
+// HAUPTFUNKTION DER TESTSUITE
+// ==========================================================================
 
 function runAllTests() {
   Logger.log("=================================================================");
@@ -33,6 +45,17 @@ function runAllTests() {
     return;
   }
   
+  // -----------------------------------------------------------------
+  // TESTCASE 0: Whitelist-Prüfung (ALS ERSTES)
+  // -----------------------------------------------------------------
+  if (TEST_CONFIG.RUN_TEST_WHITELIST_CHECK) {
+    Logger.log("\n[START] Testcase: ID 0 – Whitelist-Eintrag für Test-Mail prüfen");
+    results.push(testWhitelistCheck());
+  } else {
+    Logger.log("\n[INFO] Testcase: ID 0 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    results.push({ name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen', skipped: true });
+  }
+
   // -----------------------------------------------------------------
   // TESTCASE 1
   // -----------------------------------------------------------------
@@ -113,7 +136,7 @@ function runAllTests() {
     cleanupOldTestMails();
     results.push(testRejectedCancellation());
   } else {
-    Logger.log("\n[INFO] Testcase: ID 11 – Übersprungen (Deaktiviert in TEST_CONFIG)");
+    Logger.log("\n[INFO] Testcase: ID 11 – Abgelehnte Stornierung (24h-Frist verletzt) – Übersprungen");
     results.push({ name: 'ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)', skipped: true });
   }
 
@@ -181,8 +204,44 @@ function runAllTests() {
    ========================================================================== */
 
 /**
- * ID 1, 2, 5: Prüft die gültige Verarbeitung eines Standard-Templates
+ * ID 0: Testfall für die Whitelist-Prüfung
  */
+function testWhitelistCheck() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+  
+  try {
+    const ss = SpreadsheetApp.openById(sheetId);
+    const sheet = ss.getSheets()[0];
+    const lastRow = sheet.getLastRow();
+    
+    if (lastRow <= 1) {
+      return { name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen', passed: false, message: 'Tabelle ist leer oder enthält nur Kopfzeilen.' };
+    }
+    
+    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    const searchEmail = DEBUG_EMAIL.trim().toLowerCase();
+    let gefunden = false;
+    
+    for (let i = 0; i < dataRange.length; i++) {
+      if (!dataRange[i][3]) continue;
+      if (dataRange[i][3].toString().trim().toLowerCase() === searchEmail) {
+        gefunden = true;
+        break;
+      }
+    }
+    
+    return {
+      name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen',
+      passed: gefunden,
+      message: gefunden ? `Adresse "${DEBUG_EMAIL}" erfolgreich in der Whitelist gefunden.` : `Adresse "${DEBUG_EMAIL}" fehlt in Spalte D der Tabelle.`
+    };
+    
+  } catch (e) {
+    return { name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen', passed: false, message: 'Fehler beim Tabellenzugriff: ' + e.message };
+  }
+}
+
 function testValidReservation() {
   const testDate = getFutureDate(10, 'DOT_LEAD');
   createTestEmail({
@@ -210,9 +269,6 @@ function testValidReservation() {
   };
 }
 
-/**
- * ID 3: Prüft die Sperre von zwei Standard-Terminen innerhalb derselben Saison
- */
 function testStandardLimit() {
   const date1 = getFutureDate(3, 'DOT_LEAD');
   const date2 = getFutureDate(5, 'DOT_LEAD'); 
@@ -241,9 +297,6 @@ function testStandardLimit() {
   };
 }
 
-/**
- * ID 8: Prüft die korrekte Uhrzeitsetzung für VM (08:00 - 14:00)
- */
 function testSlotTimes() {
   const testDate = getFutureDate(12, 'DOT_LEAD');
   createTestEmail({ body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard` });
@@ -273,9 +326,6 @@ function testSlotTimes() {
   };
 }
 
-/**
- * ID 9: Prüft die Reaktion auf ein fehlerhaftes E-Mail-Format
- */
 function testInvalidFormat() {
   createTestEmail({
     subject: 'Reservierung',
@@ -296,9 +346,6 @@ function testInvalidFormat() {
   };
 }
 
-/**
- * ID 6: Prüft die automatisierte E-Mail-Erinnerung für den Folgetag
- */
 function testReminder() {
   const tomorrowDate = getFutureDate(1, 'DOT_LEAD');
   
@@ -325,9 +372,6 @@ function testReminder() {
   };
 }
 
-/**
- * ID 10: Prüft eine erfolgreiche Stornierung weit im Voraus (Frist eingehalten)
- */
 function testSuccessfulCancellation() {
   const targetDate = getFutureDate(4, 'DOT_LEAD'); 
   
@@ -364,9 +408,6 @@ function testSuccessfulCancellation() {
   };
 }
 
-/**
- * ID 11: Prüft die Ablehnung einer Stornierung am selben Tag (Frist verletzt)
- */
 function testRejectedCancellation() {
   const todayDate = getFutureDate(0, 'DOT_LEAD'); 
   
@@ -395,9 +436,6 @@ function testRejectedCancellation() {
   };
 }
 
-/**
- * ID 12: Prüft europäische Datumsformate auf erfolgreiche Erkennung
- */
 function testEuropeanDateFormats() {
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
@@ -457,13 +495,10 @@ function testEuropeanDateFormats() {
   };
 }
 
-/**
- * ID 7: Simuliert Last durch gleichzeitige Benutzeranfragen
- */
 function testScalability() {
   const startTime = new Date();
   
-  for (let i = 1; i <= 2; i++) { // Maximal 2 Joker pro Kalenderjahr erlaubt!
+  for (let i = 1; i <= 2; i++) { 
     const date = getFutureDate(20 + i, 'DOT_LEAD');
     createTestEmail({
       body: `Datum: ${date}\nSlot: Vormittag\nTyp: Joker\nBeschreibung: Lasttest ${i}`
@@ -499,7 +534,7 @@ function testScalability() {
 }
 
 /* ==========================================================================
-   HILFSFUNKTIONEN (UTILITIES)
+   HILFSFUNKTIONEN FÜR DIE TESTSUITE (UTILITIES)
    ========================================================================== */
 
 function getFutureDate(days, format) {
@@ -593,4 +628,87 @@ function cleanupOldTestMails() {
   }
   
   Utilities.sleep(2000); 
+}
+
+/* ==========================================================================
+   SEPARATES DEBUG-SKRIPT (ZUR SEPARATEN WHITELIST-ÜBERPRÜFUNG)
+   ========================================================================== */
+
+/**
+ * Unabhängiges Tool zur händischen Überprüfung der Whitelist.
+ * Nutzt die oben definierte Variable 'DEBUG_EMAIL'.
+ */
+function debugSpecificWhitelistEmail() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+
+  if (!sheetId) {
+    Logger.log("❌ FEHLER: Es wurde keine Tabellen-ID ('SHEET_CONFIG_ID') in den Skripteigenschaften gefunden.");
+    return;
+  }
+
+  let ss;
+  try {
+    ss = SpreadsheetApp.openById(sheetId);
+  } catch (e) {
+    Logger.log(`❌ FEHLER: Die Tabelle mit der ID "${sheetId}" konnte nicht geöffnet werden.`);
+    return;
+  }
+  
+  const sheet = ss.getSheets()[0];
+  if (!sheet) {
+    Logger.log(`❌ FEHLER: Kein Tabellenblatt in der Datei gefunden.`);
+    return;
+  }
+  
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    Logger.log("❌ FEHLER: Das Tabellenblatt ist leer.");
+    return;
+  }
+
+  const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  const searchEmail = DEBUG_EMAIL.trim().toLowerCase();
+  
+  Logger.log(`Gesuchte E-Mail-Adresse: "${searchEmail}"`);
+  Logger.log(`Untersuchtes Tabellenblatt: "${sheet.getName()}"`); 
+  Logger.log("--- Start Tabellen-Scan ---");
+  
+  let gefunden = false;
+  
+  for (let i = 0; i < dataRange.length; i++) {
+    const row = dataRange[i];
+    if (!row[3]) continue; 
+    
+    const emailInTable = row[3].toString();
+    const emailInTableCompare = emailInTable.trim().toLowerCase();
+    
+    if (emailInTableCompare === searchEmail) {
+      Logger.log(`✅ MATCH GEFUNDEN in Zeile ${i + 2}!`);
+      
+      const id = row[0] ? row[0].toString().trim() : 'Keine ID';
+      const vorname = row[1] ? row[1].toString().trim() : '';
+      const nachname = row[2] ? row[2].toString().trim() : '';
+      
+      let vollerName = `${vorname} ${nachname}`.trim();
+      if (!vollerName) vollerName = emailInTableCompare;
+
+      const mobileRaw = row[4] ? row[4].toString().trim() : '';
+      const mobile = mobileRaw !== '' ? mobileRaw : 'Nicht hinterlegt';
+
+      Logger.log(`   -> Extrahierte ID:       "${id}"`);
+      Logger.log(`   -> Vorname (Rohdaten):   "${vorname}" ${vorname === '' ? '(LEER)' : ''}`);
+      Logger.log(`   -> Nachname (Rohdaten):  "${nachname}" ${nachname === '' ? '(LEER)' : ''}`);
+      Logger.log(`   -> Generierter Name:     "${vollerName}"`);
+      Logger.log(`   -> E-Mail in Zelle:      "${emailInTable}"`);
+      Logger.log(`   -> Mobilnummer:          "${mobile}"`);
+      
+      gefunden = true;
+      break;
+    }
+  }
+  
+  if (!gefunden) {
+    Logger.log(`❌ FEHLER: Die Adresse "${DEBUG_EMAIL}" wurde nicht gefunden.`);
+  }
 }
