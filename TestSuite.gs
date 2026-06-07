@@ -1,7 +1,8 @@
 /**
  * TestSuite.gs
  * Automatisiertes Testskript für das E-Mail-basierte Reservierungssystem
- * * VORAUSSETZUNG: Deine E-Mail-Adresse muss in der Whitelist-Tabelle eingetragen sein!
+ * * ANLEITUNG: Füge diesen Code in eine neue, separate .gs-Datei in deinem Projekt ein.
+ * VORAUSSETZUNG: Deine eigene E-Mail-Adresse muss in der Whitelist-Tabelle eingetragen sein!
  */
 
 // Konfiguration für die Testsuite: Hier kannst du jeden Test einzeln steuern
@@ -14,7 +15,7 @@ const TEST_CONFIG = {
   RUN_TEST_SUCCESSFUL_CANCELLATION: true,// ID 10 – Erfolgreiche Stornierung
   RUN_TEST_REJECTED_CANCELLATION: true,  // ID 11 – Abgelehnte Stornierung (24h-Frist)
   RUN_TEST_EUROPEAN_DATE_FORMATS: false, // ID 12 – Flexibles europäisches Datums-Parsing
-  RUN_SCALABILITY_TEST: false            // ID 7 – Skalierungstest (Systemstabilität)
+  RUN_SCALABILITY_TEST: false             // ID 7 – Skalierungstest (Systemstabilität)
 };
 
 function runAllTests() {
@@ -22,6 +23,15 @@ function runAllTests() {
   Logger.log("=== START DER AUTOMATISIERTEN TESTSUITE ===");
   Logger.log("=================================================================");
   const results = [];
+  
+  // Überprüfen, ob das Hauptsystem bereits einmal initialisiert wurde
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+  if (!sheetId) {
+    Logger.log("❌ KRITISCHER FEHLER: Keine 'SHEET_CONFIG_ID' in den Skripteigenschaften gefunden.");
+    Logger.log("Bitte führe zuerst die Hauptfunktion einmal aus, damit die Mitgliederliste initialisiert wird.");
+    return;
+  }
   
   // -----------------------------------------------------------------
   // TESTCASE 1
@@ -132,7 +142,7 @@ function runAllTests() {
   }
 
   // -----------------------------------------------------------------
-  // AUSWERTUNG & ZUSAMMENFASSUNG (angepasst für Skipped)
+  // AUSWERTUNG & ZUSAMMENFASSUNG
   // -----------------------------------------------------------------
   const activeResults = results.filter(r => !r.skipped);
   const passed = activeResults.filter(r => r.passed).length;
@@ -160,7 +170,7 @@ function runAllTests() {
   });
 
   // Ergebnis per E-Mail an den Admin senden
-  if (CONFIG && CONFIG.ADMIN_EMAIL && totalActive > 0) {
+  if (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_EMAIL && totalActive > 0) {
     MailApp.sendEmail(CONFIG.ADMIN_EMAIL, `Testbericht Reservierungssystem: ${passed}/${totalActive}`, emailBody);
     Logger.log(`\nTestbericht erfolgreich an ${CONFIG.ADMIN_EMAIL} gesendet.`);
   }
@@ -201,7 +211,7 @@ function testValidReservation() {
 }
 
 /**
- * ID 3: Prüft die Sperre von zwei Standard-Terminen innerhalb von 14 Tagen
+ * ID 3: Prüft die Sperre von zwei Standard-Terminen innerhalb derselben Saison
  */
 function testStandardLimit() {
   const date1 = getFutureDate(3, 'DOT_LEAD');
@@ -232,7 +242,7 @@ function testStandardLimit() {
 }
 
 /**
- * ID 8: Prüft die korrekte Uhrzeitsetzung für VM (6-14) und NM (14-20)
+ * ID 8: Prüft die korrekte Uhrzeitsetzung für VM (08:00 - 14:00)
  */
 function testSlotTimes() {
   const testDate = getFutureDate(12, 'DOT_LEAD');
@@ -387,15 +397,12 @@ function testRejectedCancellation() {
 
 /**
  * ID 12: Prüft europäische Datumsformate auf erfolgreiche Erkennung
- * Optimiert: Löscht das Event sofort und wartet kurz, damit Folgetests nicht blockiert werden.
  */
 function testEuropeanDateFormats() {
   const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
   const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
   
-  // Wir nutzen verschiedene Tage (6, 7, 8, 9), damit sie theoretisch sogar parallel existieren könnten,
-  // löschen sie aber dennoch sofort nacheinander auf.
   const formatsToTest = [
     { type: 'DOT_LEAD',    daysOut: 6,  slot: 'Vormittag',  desc: '05.06.2026 (Mit führenden Nullen)' },
     { type: 'DOT_NO_LEAD', daysOut: 7,  slot: 'Nachmittag', desc: '5.6.2026 (Ohne führende Nullen)' },
@@ -406,44 +413,36 @@ function testEuropeanDateFormats() {
   let successfulParses = 0;
   
   formatsToTest.forEach(item => {
-    // Vorab-Sicherheit: Falls von einem abgebrochenen alten Testlauf dort noch ein Event liegt, löschen wir es
     const targetDateObj = new Date();
     targetDateObj.setDate(targetDateObj.getDate() + item.daysOut);
     const existingEvents = calendar.getEventsForDay(targetDateObj);
     existingEvents.forEach(e => {
       if (e.getTitle().includes(myName)) e.deleteEvent();
     });
-    Utilities.sleep(500); // Kurz warten nach Vorab-Bereinigung
+    Utilities.sleep(500);
 
     const formattedDateString = getFutureDate(item.daysOut, item.type);
     
-    // 1. Sende E-Mail mit dem jeweiligen europäisch formatierten Datum
     createTestEmail({
       subject: 'Reservierung',
       body: `Datum: ${formattedDateString}\nSlot: ${item.slot}\nTyp: Standard\nBeschreibung: Europäisches Format-Test ${item.type}`
     });
     labelTestEmails();
     processReservationEmails();
-    Utilities.sleep(2000); // Dem System Zeit geben, die Mail zu verarbeiten und einzutragen
+    Utilities.sleep(2000); 
     
-    // 2. Prüfe, ob das Event am präzisen Zieltag eingetragen wurde
     const events = calendar.getEventsForDay(targetDateObj);
     const event = events.find(e => e.getTitle().includes(myName) && e.getDescription().includes(item.type));
     
     if (event) {
       successfulParses++;
       Logger.log(`   -> [ERFOLG] Format erkannt: ${item.type} (${formattedDateString})`);
-      
-      // JETZT WICHTIG: Sofort löschen für den nächsten Schleifendurchlauf!
       event.deleteEvent();
-      
-      // Google Zeit geben, die Löschung in der Datenbank zu registrieren
       Utilities.sleep(1500); 
     } else {
-      Logger.log(`   -> [FEHLER] Europäisches Format fehlgeschlagen oder durch Regeln blockiert: "${item.desc}" mit generiertem Text: '${formattedDateString}'`);
+      Logger.log(`   -> [FEHLER] Europäisches Format fehlgeschlagen: "${item.desc}" mit generiertem Text: '${formattedDateString}'`);
     }
     
-    // Altem Test-Mail-Müll aus diesem Schleifendurchgang direkt wegräumen
     cleanupOldTestMails();
   });
   
@@ -453,7 +452,7 @@ function testEuropeanDateFormats() {
     name: 'ID 12 – Europäische Datumsformate',
     passed: passed,
     message: passed 
-      ? `Alle ${formatsToTest.length} europäischen Formate (Punkte, Ohne Null, Schrägstrich, Textmonat) wurden erfolgreich verarbeitet.` 
+      ? `Alle ${formatsToTest.length} europäischen Formate wurden erfolgreich verarbeitet.` 
       : `${successfulParses} von ${formatsToTest.length} europäischen Formaten wurden korrekt erkannt.`
   };
 }
@@ -464,7 +463,7 @@ function testEuropeanDateFormats() {
 function testScalability() {
   const startTime = new Date();
   
-  for (let i = 1; i <= 2; i++) { // Achtung: Maximal 2 Joker pro Kalenderjahr erlaubt!
+  for (let i = 1; i <= 2; i++) { // Maximal 2 Joker pro Kalenderjahr erlaubt!
     const date = getFutureDate(20 + i, 'DOT_LEAD');
     createTestEmail({
       body: `Datum: ${date}\nSlot: Vormittag\nTyp: Joker\nBeschreibung: Lasttest ${i}`
@@ -500,7 +499,7 @@ function testScalability() {
 }
 
 /* ==========================================================================
-   HILFSFUNKTIONEN (UTILITIES) – MIT TEST-ARCHIV LABELLING
+   HILFSFUNKTIONEN (UTILITIES)
    ========================================================================== */
 
 function getFutureDate(days, format) {
