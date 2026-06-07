@@ -3,6 +3,9 @@
 // Google Apps Script für Google Calendar, Gmail, Drive & Google Spreadsheet
 // =============================================================================
 
+// Globale URL-Quelle für die PDF-Anleitung
+const PDF_SOURCE_URL = 'https://github.com/marlan99/Bootsverein-BJB/blob/main/Anleitung%20Bootsreservation.pdf';
+
 const CONFIG = {
   // <--- KALENDER & ADMIN EINSTELLUNGEN --->
   CALENDAR_ID: 'Bootsclub1890@gmail.com', // Hier die KALENDER ID eintragen
@@ -15,8 +18,6 @@ const CONFIG = {
   // true  = Willkommens-Mails werden abgefangen und NUR an den Vorstand gesendet
   // false = Mails gehen direkt an die neuen Mitglieder und der Vorstand im CC
   TEST_MODUS_AKTIV: true, 
-  // Hier die ID deiner PDF-Anleitung aus Google Drive eintragen
-  PDF_FILE_ID: 'HIER-DIE-PDF-ID-EINTRAGEN', // Hier die PDF ID eintragen
   // Einstellungen für den automatischen Excel-Listenimport
   EXCEL_SUBJECT: 'Mitgliederliste',
   EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
@@ -461,7 +462,6 @@ function importExcelToSheets() {
       
       if (label) {
         threads[i].addLabel(label);
-        threads[i].moveToArchive();
         Logger.log(`✉️ E-Mail-Thread wurde als gelesen markiert und nach "${CONFIG.EXCEL_TARGET_LABEL}" verschoben.`);
       }
     }
@@ -734,6 +734,7 @@ function checkAndWelcomeNewMembers() {
 
 function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
   const name = vorname ? vorname : 'Mitglied';
+  const scriptProperties = PropertiesService.getScriptProperties();
   
   let finalReceiver = toEmail;
   let finalCc = adminEmail; // Im Live-Modus erhält der Vorstand standardmässig ein CC
@@ -773,7 +774,8 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
   const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${adminEmail}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
 
   try {
-    const fileId = CONFIG.PDF_FILE_ID;
+    // Holt die ID dynamisch aus den permanenten Skript-Eigenschaften
+    const fileId = scriptProperties.getProperty('PDF_FILE_ID');
     if (!fileId) throw new Error('Keine gültige Google Drive File ID konfiguriert.');
     
     const pdfFile = DriveApp.getFileById(fileId);
@@ -984,6 +986,88 @@ function ensureInitialSheet() {
 }
 
 /**
+ * Holt die PDF von der URL und speichert sie am selben Ort wie die Mitgliederliste.
+ * Falls die Datei bereits existiert, wird sie nur aktualisiert, wenn die Online-Datei neuer ist.
+ */
+function fetchAndSyncAnleitungPDF() {
+  Logger.log("🔄 Synchronisiere PDF-Anleitung von GitHub...");
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+  
+  if (!sheetId) {
+    Logger.log("⚠️ Fehler: SHEET_CONFIG_ID noch nicht vorhanden. Kann Pfad nicht ermitteln.");
+    return;
+  }
+  
+  // Ordner der Mitgliederliste ermitteln
+  const sheetFile = DriveApp.getFileById(sheetId);
+  const parents = sheetFile.getParents();
+  let targetFolder = DriveApp.getRootFolder();
+  if (parents.hasNext()) {
+    targetFolder = parents.next();
+  }
+  
+  // Datei von GitHub abrufen
+  // Für GitHub-Links konvertieren wir zu raw, falls ein normaler Blob-Abruf scheitert, 
+  // aber UrlFetchApp holt standardmäßig die Antwort als Byte-Stream.
+  let targetUrl = PDF_SOURCE_URL;
+  if (targetUrl.includes('github.com') && !targetUrl.includes('raw.githubusercontent.com') && !targetUrl.includes('?raw=true')) {
+    targetUrl = targetUrl.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+  }
+  
+  const response = UrlFetchApp.fetch(targetUrl, { muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) {
+    Logger.log("❌ Fehler beim Abrufen der PDF von URL: " + response.getResponseCode());
+    return;
+  }
+  
+  const pdfBlob = response.getBlob().setName("Anleitung Bootsreservation.pdf");
+  
+  // Prüfen, ob die Datei im Ordner existiert
+  const fileName = "Anleitung Bootsreservation.pdf";
+  const files = targetFolder.getFilesByName(fileName);
+  let localFile = null;
+  
+  if (files.hasNext()) {
+    localFile = files.next();
+  }
+  
+  if (localFile) {
+    // Falls die Datei existiert, prüfen wir die Header ("Last-Modified"), falls vom Server bereitgestellt.
+    // GitHub Raw liefert zuverlässige Zeitstempel. Falls nicht lesbar, erzwingen wir Aktualisierung.
+    const headers = response.getHeaders();
+    const remoteLastModifiedStr = headers["Last-Modified"] || headers["last-modified"];
+    let shouldUpdate = true;
+    
+    if (remoteLastModifiedStr) {
+      const remoteDate = new Date(remoteLastModifiedStr);
+      const localDate = new Date(localFile.getLastUpdated());
+      
+      if (remoteDate <= localDate) {
+        shouldUpdate = false;
+        Logger.log("ℹ️ Lokale PDF ist aktuell oder neuer als die Online-Version. Keine Aktualisierung nötig.");
+      }
+    }
+    
+    if (shouldUpdate) {
+      Logger.log("🔄 Lokale PDF veraltet. Aktualisiere Dateiinhalt...");
+      // In Google Apps Script aktualisiert man Dateien via Drive-API oder Überschreiben des Blobs
+      localFile.setContent(pdfBlob.getBytes());
+    }
+    
+    // ID permanent sichern
+    scriptProperties.setProperty('PDF_FILE_ID', localFile.getId());
+    Logger.log(`📌 PDF File-ID registriert: ${localFile.getId()}`);
+  } else {
+    // Datei neu erstellen
+    Logger.log("📥 PDF existiert lokal nicht. Erstelle neue Datei im Zielverzeichnis...");
+    const newFile = targetFolder.createFile(pdfBlob);
+    scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
+    Logger.log(`📌 Neue PDF File-ID registriert: ${newFile.getId()}`);
+  }
+}
+
+/**
  * ZENTRALE SETUP-FUNKTION
  * Richtet die Tabelle, alle Labels und alle VIER benötigten Zeit-Trigger vollautomatisch ein.
  */
@@ -994,6 +1078,13 @@ function setupTriggers() {
 
   // SCHRITT 1: Datenbank und Tabellen-Struktur garantieren
   ensureInitialSheet();
+
+  // SCHRITT 1b: PDF-Anleitung synchronisieren und ID in den Objekteigenschaften speichern
+  try {
+    fetchAndSyncAnleitungPDF();
+  } catch(pdfError) {
+    Logger.log("⚠️ Warnung beim PDF-Sync: " + pdfError.toString());
+  }
 
   // SCHRITT 2: Bestehende Trigger bereinigen (Verhindert Doppelungen)
   const existingTriggers = ScriptApp.getProjectTriggers();
@@ -1024,6 +1115,7 @@ function setupTriggers() {
   Logger.log('3. Tägliche Erinnerungen (04:00 Uhr) aktiv.');
   Logger.log('4. Onboarding-Prüfung (08:00 Uhr) aktiv.');
   Logger.log('5. Stündlicher Excel-Import inkl. Tracking-System aktiv.');
+  Logger.log('6. PDF-Anleitung heruntergeladen & Speicherort abgeglichen.');
   Logger.log('Alle Gmail-Labels wurden verifiziert bzw. erstellt.');
   Logger.log('========================================================================');
 }
