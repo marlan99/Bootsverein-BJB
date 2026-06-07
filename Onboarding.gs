@@ -15,14 +15,14 @@ const ONBOARDING_CONFIG = {
 };
 
 /**
- * Hauptfunktion: Prüft auf neue Mitglieder und versendet die Willkommens-Mail.
- * Richte hierfür einen täglichen Zeitgesteuerten Trigger (z.B. morgens) ein.
+ * Hauptfunktion: Prüft auf neue Mitglieder, bereinigt gelöschte IDs 
+ * und versendet die Willkommens-Mail.
  */
 function checkAndWelcomeNewMembers() {
   const modusText = ONBOARDING_CONFIG.TEST_MODUS_AKTIV ? '⚠️ TESTMODUS (AKTIV)' : '🚀 LIVE-BETRIEB';
   Logger.log(`=== STARTE PRÜFUNG AUF NEUE MITGLIEDER [Modus: ${modusText}] ===`);
   
-  // Überprüfung, ob das CONFIG-Objekt aus dem Hauptskript existiert
+  // Überprüfung der CONFIG
   if (typeof CONFIG === 'undefined' || !CONFIG.SHEET_CONFIG_ID || !CONFIG.ADMIN_EMAIL) {
     Logger.log('❌ FEHLER: Das CONFIG-Objekt aus dem Hauptskript wurde nicht gefunden oder ist unvollständig.');
     return;
@@ -30,18 +30,17 @@ function checkAndWelcomeNewMembers() {
 
   const scriptProperties = PropertiesService.getScriptProperties();
   
-  // Lädt die Liste der bereits begrüßten Mitglieder-IDs
+  // Lädt die Liste der bisher bekannten Mitglieder-IDs
   let welcomedMembersRaw = scriptProperties.getProperty('WELCOMED_MEMBER_IDS');
   let welcomedMemberIds = welcomedMembersRaw ? JSON.parse(welcomedMembersRaw) : [];
   
-  // Wenn das System komplett neu gestartet wird, optional alle bestehenden einlesen ohne Mail-Versand
+  // Flag für den allerersten Systemstart (wenn die Datenbank komplett leer ist)
   const isInitialRun = welcomedMemberIds.length === 0;
   if (isInitialRun) {
     Logger.log('Erster Durchlauf erkannt. Bestehende Mitglieder werden erfasst, ohne E-Mails zu senden.');
   }
 
   try {
-    // Greift direkt auf CONFIG.SHEET_CONFIG_ID aus deinem vorhandenen Script zu
     const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
     const sheet = ss.getSheets()[0]; 
     if (!sheet) {
@@ -52,12 +51,34 @@ function checkAndWelcomeNewMembers() {
     const lastRow = sheet.getLastRow();
     if (lastRow <= 1) {
       Logger.log('Keine Mitgliederdaten in der Tabelle gefunden.');
+      // Falls die Tabelle komplett geleert wurde, löschen wir auch das Gedächtnis
+      scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([]));
       return;
     } 
     
     // Daten ab Zeile 2 einlesen (Spalten: ID, Vorname, Nachname, E-Mail, Mobile)
     const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
-    let newWelcomedIds = [...welcomedMemberIds];
+    
+    // 1. SCHRITT: Alle AKTUELLEN IDs aus der Tabelle sammeln
+    let currentTableIds = [];
+    for (let i = 0; i < dataRange.length; i++) {
+      const memberId = dataRange[i][0] ? dataRange[i][0].toString().trim() : '';
+      if (memberId) {
+        currentTableIds.push(memberId);
+      }
+    }
+
+    // 2. SCHRITT: Bereinigung (Gelöschte Mitglieder entfernen)
+    // Wir filtern das alte Gedächtnis und behalten NUR IDs, die auch jetzt noch in der Tabelle existieren.
+    // Beim "isInitialRun" ist welcomedMemberIds ohnehin leer, daher überspringen wir das dort logisch.
+    let cleanedWelcomedIds = welcomedMemberIds.filter(id => currentTableIds.includes(id));
+    
+    let removedCount = welcomedMemberIds.length - cleanedWelcomedIds.length;
+    if (removedCount > 0) {
+      Logger.log(`🧹 BEREINIGUNG: ${removedCount} gelöschte(s) Mitglied(er) aus dem Skript-Gedächtnis entfernt.`);
+    }
+
+    // 3. SCHRITT: Neue Mitglieder prüfen und begrüßen
     let mailsSentCount = 0;
 
     for (let i = 0; i < dataRange.length; i++) {
@@ -69,22 +90,22 @@ function checkAndWelcomeNewMembers() {
       
       if (!memberId || !email) continue; // Überspringe unvollständige Zeilen
 
-      // Prüfen, ob die ID bereits registriert/begrüßt wurde
-      if (!welcomedMemberIds.includes(memberId)) {
+      // Prüfen, ob diese ID in unserer bereinigten Liste fehlt
+      if (!cleanedWelcomedIds.includes(memberId)) {
         
         if (!isInitialRun) {
-          // Neues Mitglied gefunden -> E-Mail senden (Modus wird intern in der Funktion geprüft)
+          // Neues Mitglied gefunden -> Willkommens-Mail senden
           sendWelcomeMail(email, vorname, nachname);
           mailsSentCount++;
         }
         
-        // Zur Liste der bekannten IDs hinzufügen
-        newWelcomedIds.push(memberId);
+        // Die neue ID direkt zur bereinigten Liste hinzufügen
+        cleanedWelcomedIds.push(memberId);
       }
     }
 
-    // Aktualisierte Liste dauerhaft im Script speichern
-    scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify(newWelcomedIds));
+    // 4. SCHRITT: Speicher aktualisieren
+    scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify(cleanedWelcomedIds));
     Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
   } catch (e) {
