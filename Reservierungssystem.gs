@@ -32,18 +32,42 @@ const CONFIG = {
 // 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN
 // =============================================================================
 
+// =============================================================================
+// 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN
+// =============================================================================
+
 function processReservationEmails() {
-  const label = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
-  if (!label) {
-    Logger.log('Label nicht gefunden: ' + CONFIG.GMAIL_LABEL);
-    return;
+  // 1. Label holen oder erstellen, damit die Mails dort abgelegt werden können
+  let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
+  if (!labelNeu) {
+    labelNeu = createGmailLabelStructure(CONFIG.GMAIL_LABEL);
   }
 
-  const threads = label.getThreads();
-  threads.forEach(thread => {
+  // 2. Suche nach neuen Reservierungen direkt im Posteingang
+  const reservationThreads = GmailApp.search('in:inbox subject:"Reservierung"');
+  Logger.log(`Gefundene neue Reservierungen im Posteingang: ${reservationThreads.length}`);
+  
+  reservationThreads.forEach(thread => {
     const messages = thread.getMessages();
     messages.forEach(message => {
       if (message.isUnread()) {
+        // Optionale Vorab-Zuweisung des Labels (entspricht dem Filter "Label anwenden")
+        thread.addLabel(labelNeu);
+        processSingleEmail(message, thread);
+      }
+    });
+  });
+
+  // 3. Suche nach neuen Stornierungen direkt im Posteingang
+  const cancellationThreads = GmailApp.search('in:inbox subject:"Stornierung"');
+  Logger.log(`Gefundene neue Stornierungen im Posteingang: ${cancellationThreads.length}`);
+  
+  cancellationThreads.forEach(thread => {
+    const messages = thread.getMessages();
+    messages.forEach(message => {
+      if (message.isUnread()) {
+        // Auch Stornierungen erhalten das Label "Reservierung/Neu"
+        thread.addLabel(labelNeu);
         processSingleEmail(message, thread);
       }
     });
@@ -74,7 +98,9 @@ function processSingleEmail(message, thread) {
   // LOGIK FÜR STORNIERUNG
   if (subject.includes('stornierung') || subject.includes('absage')) {
     executeCancellation(data, userId, thread, message);
-    return; 
+    // Sicherstellen, dass der Thread nach der Stornierung aus der Inbox verschwindet
+    thread.moveToArchive();
+    return;
   }
 
   // LOGIK FÜR RESERVIERUNG
