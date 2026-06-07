@@ -1127,7 +1127,7 @@ function setupTriggers() {
   ScriptApp.newTrigger('checkAndWelcomeNewMembers').timeBased().everyDays(1).atHour(8).create();
 
   // 4. Stündlicher Excel-Import der Mitgliederliste
-  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
 
   // SCHRITT 4: Erforderliche Gmail-Labels anlegen
   ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
