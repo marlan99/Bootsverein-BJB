@@ -461,6 +461,7 @@ function importExcelToSheets() {
       
       if (label) {
         threads[i].addLabel(label);
+        threads[i].moveToArchive();
         Logger.log(`✉️ E-Mail-Thread wurde als gelesen markiert und nach "${CONFIG.EXCEL_TARGET_LABEL}" verschoben.`);
       }
     }
