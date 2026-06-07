@@ -1,7 +1,6 @@
 // ===============================================
 // BC1890 - Mitglieder Onboarding & Willkommens-System
 // Google Apps Script für automatische Willkommens-Mails
-// (Nutzt die globale CONFIG aus Reservierungssystem.gs)
 // ===============================================
 
 const ONBOARDING_CONFIG = {
@@ -22,14 +21,26 @@ function checkAndWelcomeNewMembers() {
   const modusText = ONBOARDING_CONFIG.TEST_MODUS_AKTIV ? '⚠️ TESTMODUS (AKTIV)' : '🚀 LIVE-BETRIEB';
   Logger.log(`=== STARTE PRÜFUNG AUF NEUE MITGLIEDER [Modus: ${modusText}] ===`);
   
-  // Überprüfung der CONFIG
-  if (typeof CONFIG === 'undefined' || !CONFIG.SHEET_CONFIG_ID || !CONFIG.ADMIN_EMAIL) {
-    Logger.log('❌ FEHLER: Das CONFIG-Objekt aus dem Hauptskript wurde nicht gefunden oder ist unvollständig.');
+  const scriptProperties = PropertiesService.getScriptProperties();
+  
+  // Dynamische Ermittlung der Tabellen-ID aus den ScriptProperties mit Fallback auf globales CONFIG
+  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+  if (!sheetId && typeof CONFIG !== 'undefined' && CONFIG.SHEET_CONFIG_ID) {
+    sheetId = CONFIG.SHEET_CONFIG_ID;
+  }
+  
+  // Ermittlung der Admin-E-Mail (Vorstand)
+  let adminEmail = '';
+  if (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_EMAIL) {
+    adminEmail = CONFIG.ADMIN_EMAIL;
+  }
+
+  // Sicherheitsprüfung
+  if (!sheetId || !adminEmail) {
+    Logger.log('❌ KRITISCHER FEHLER: Tabellen-ID oder Admin-E-Mail konnte nicht ermittelt werden. Wurde das Hauptsystem bereits initialisiert?');
     return;
   }
 
-  const scriptProperties = PropertiesService.getScriptProperties();
-  
   // Lädt die Liste der bisher bekannten Mitglieder-IDs
   let welcomedMembersRaw = scriptProperties.getProperty('WELCOMED_MEMBER_IDS');
   let welcomedMemberIds = welcomedMembersRaw ? JSON.parse(welcomedMembersRaw) : [];
@@ -41,10 +52,10 @@ function checkAndWelcomeNewMembers() {
   }
 
   try {
-    const ss = SpreadsheetApp.openById(CONFIG.SHEET_CONFIG_ID);
+    const ss = SpreadsheetApp.openById(sheetId);
     const sheet = ss.getSheets()[0]; 
     if (!sheet) {
-      Logger.log('Fehler: Tabelle konnte nicht geöffnet werden.');
+      Logger.log('Fehler: Erstes Tabellenblatt konnte nicht geöffnet werden.');
       return;
     }
     
@@ -69,8 +80,6 @@ function checkAndWelcomeNewMembers() {
     }
 
     // 2. SCHRITT: Bereinigung (Gelöschte Mitglieder entfernen)
-    // Wir filtern das alte Gedächtnis und behalten NUR IDs, die auch jetzt noch in der Tabelle existieren.
-    // Beim "isInitialRun" ist welcomedMemberIds ohnehin leer, daher überspringen wir das dort logisch.
     let cleanedWelcomedIds = welcomedMemberIds.filter(id => currentTableIds.includes(id));
     
     let removedCount = welcomedMemberIds.length - cleanedWelcomedIds.length;
@@ -95,7 +104,7 @@ function checkAndWelcomeNewMembers() {
         
         if (!isInitialRun) {
           // Neues Mitglied gefunden -> Willkommens-Mail senden
-          sendWelcomeMail(email, vorname, nachname);
+          sendWelcomeMail(email, vorname, nachname, adminEmail);
           mailsSentCount++;
         }
         
@@ -118,19 +127,19 @@ function checkAndWelcomeNewMembers() {
 /**
  * Versendet die Willkommens-E-Mail (Berücksichtigt den eingestellten Test- oder Livemodus)
  */
-function sendWelcomeMail(toEmail, vorname, nachname) {
+function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
   const name = vorname ? vorname : 'Mitglied';
   
   // Variablen deklarieren, die sich je nach Modus ändern
   let finalReceiver = toEmail;
-  let finalCc = CONFIG.ADMIN_EMAIL; // Im Live-Modus geht der Vorstand standardmäßig ins CC
+  let finalCc = adminEmail; // Im Live-Modus geht der Vorstand standardmäßig ins CC
   let subject = 'Herzlich willkommen beim Bootsclub 1890! ⛵';
   let testNoticeHtml = '';
   let testNoticePlain = '';
 
   // Logik umschalten, falls der Testmodus aktiv ist
   if (ONBOARDING_CONFIG.TEST_MODUS_AKTIV) {
-    finalReceiver = CONFIG.ADMIN_EMAIL; // Mail an Vorstand umleiten
+    finalReceiver = adminEmail; // Mail an Vorstand umleiten
     finalCc = ''; // CC leeren, um Doppelversand an Vorstand zu vermeiden
     subject = `[TEST-MODUS für: ${toEmail}] Herzlich Willkommen beim Bootsclub 1890! ⛵`;
     
@@ -153,7 +162,7 @@ function sendWelcomeMail(toEmail, vorname, nachname) {
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Sende Reservierungen an: <b>${CONFIG.ADMIN_EMAIL}</b>. Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br>
+    • Sende Reservierungen an: <b>${adminEmail}</b>. Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br>
     • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text (bis max. 24 Stunden vor dem Termin).<br><br>
     
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br>
@@ -162,7 +171,7 @@ function sendWelcomeMail(toEmail, vorname, nachname) {
     <b>Dein Vorstand</b><br>
   `;
 
-  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${CONFIG.ADMIN_EMAIL}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
+  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${adminEmail}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
 
   try {
     // PDF-Anleitung aus Google Drive holen
@@ -177,7 +186,7 @@ function sendWelcomeMail(toEmail, vorname, nachname) {
     // E-Mail senden mit den dynamisch gesetzten Empfängern
     GmailApp.sendEmail(finalReceiver, subject, plainBody, {
       cc: finalCc,
-      replyTo: CONFIG.ADMIN_EMAIL,
+      replyTo: adminEmail,
       htmlBody: htmlBody,
       attachments: [attachmentBlob]
     });
