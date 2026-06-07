@@ -132,14 +132,13 @@ function sendWelcomeMail(toEmail, vorname, nachname) {
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Sende Reservierungen an: <b>${CONFIG.ADMIN_EMAIL}</b><br>
-    • Die E-Mail muss die Zeilen <b>Datum:</b>, <b>Slot:</b> (Vormittag/Nachmittag) und <b>Typ:</b> (Standard/Joker) enthalten.<br><br>
-    • Für eine Stornierung sende einfach das Wort <b>"Stornierung"</b> oder <b>"Absage"</b> im Betreff (bis max. 24 Stunden vor dem Termin).<br><br>
+    • Sende Reservierungen an: <b>${CONFIG.ADMIN_EMAIL}</b>. Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br>
+    • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text senden (bis max. 24 Stunden vor dem Termin).<br><br>
     
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
-    Allzeit gute Fahrt und viel Spaß auf dem Wasser!<br><br>
-    <b>Dein Vorstand</b>
+    Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br>
+    <b>Dein Vorstand</b><br>
   `;
 
   const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${CONFIG.ADMIN_EMAIL}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
