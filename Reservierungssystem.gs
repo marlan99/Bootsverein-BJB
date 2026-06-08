@@ -351,7 +351,18 @@ function validateRequest(data, userId, sender) {
 function createCalendarEvent(data, userId) {
   try {
     const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
-    let title = data.type === 'joker' ? `JOKER – ${data.name}` : data.name;
+    // 1. Definiere hier deinen gewünschten Prefix (z. B. "Boot" oder "BC1890")
+    const myPrefix = 'Boot:'; 
+
+    // 2. Erstelle den Titel basierend auf dem Buchungstyp (Joker oder Standard)
+    let title = '';
+    if (data.type === 'joker') {
+      // Wenn es ein Joker ist: "JOKER - PREFIX Name"
+      title = `JOKER - ${myPrefix} ${data.name}`;
+    } else {
+      // Wenn es eine Standardbuchung ist: "PREFIX Name"
+      title = `${myPrefix} ${data.name}`;
+    }
 
     const description = [
       `Name: ${data.name}`,
