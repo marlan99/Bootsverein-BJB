@@ -1034,7 +1034,6 @@ function fetchAndSyncAnleitungPDF() {
   Logger.log("🔄 Synchronisiere PDF-Anleitung von GitHub...");
   const scriptProperties = PropertiesService.getScriptProperties();
   const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
-  
   if (!sheetId) {
     Logger.log("⚠️ Fehler: SHEET_CONFIG_ID noch nicht vorhanden. Kann Pfad nicht ermitteln.");
     return;
@@ -1048,17 +1047,21 @@ function fetchAndSyncAnleitungPDF() {
   }
   
   let targetUrl = PDF_SOURCE_URL;
-  if (targetUrl.includes('github.com') && !targetUrl.includes('raw.githubusercontent.com') && !targetUrl.includes('?raw=true')) {
-    targetUrl = targetUrl.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+  
+  // GitHub-Raw-Parameter anhängen
+  if (targetUrl.includes('github.com') && !targetUrl.includes('?raw=true')) {
+    targetUrl += targetUrl.includes('?') ? '&raw=true' : '?raw=true';
   }
   
+  Logger.log("📥 Rufe URL ab: " + targetUrl);
   const response = UrlFetchApp.fetch(targetUrl, { muteHttpExceptions: true });
   if (response.getResponseCode() !== 200) {
     Logger.log("❌ Fehler beim Abrufen der PDF von URL: " + response.getResponseCode());
     return;
   }
   
-  const pdfBlob = response.getBlob().setName("Anleitung Bootsreservation.pdf");
+  // Blob explizit als PDF deklarieren
+  const pdfBlob = response.getBlob().setContentType("application/pdf").setName("Anleitung Bootsreservation.pdf");
   
   const fileName = "Anleitung Bootsreservation.pdf";
   const files = targetFolder.getFilesByName(fileName);
@@ -1084,12 +1087,18 @@ function fetchAndSyncAnleitungPDF() {
     }
     
     if (shouldUpdate) {
-      Logger.log("🔄 Lokale PDF veraltet. Aktualisiere Dateiinhalt...");
-      localFile.setContent(pdfBlob.getBytes());
+      Logger.log("🔄 Lokale PDF veraltet oder korrupt. Ersetze Datei...");
+      // Um Mime-Type-Fehler und korrupte Alt-Inhalte zu vermeiden: 
+      // Altes File löschen und neu erstellen
+      localFile.setTrashed(true);
+      const newFile = targetFolder.createFile(pdfBlob);
+      scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
+      Logger.log(`📌 PDF aktualisiert. Neue File-ID registriert: ${newFile.getId()}`);
+    } else {
+      scriptProperties.setProperty('PDF_FILE_ID', localFile.getId());
+      Logger.log(`📌 Bestehende PDF File-ID registriert: ${localFile.getId()}`);
     }
     
-    scriptProperties.setProperty('PDF_FILE_ID', localFile.getId());
-    Logger.log(`📌 PDF File-ID registriert: ${localFile.getId()}`);
   } else {
     Logger.log("📥 PDF existiert lokal nicht. Erstelle neue Datei im Zielverzeichnis...");
     const newFile = targetFolder.createFile(pdfBlob);
