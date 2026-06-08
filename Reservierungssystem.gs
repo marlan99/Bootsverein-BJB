@@ -974,7 +974,17 @@ function createGmailLabelStructure(fullLabelPath) {
 
 function sendDailyReservationReminders() {
   Logger.log("=== STARTE TÄGLICHE ERINNERUNGS-PRÜFUNG ===");
-  const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+  
+  // WECHSEL ZUM STANDARDKALENDER, FALLS CONFIG.CALENDAR_ID LEER IST
+  const calendar = CONFIG.CALENDAR_ID ? 
+    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+    
+  // SICHERHEITS-CHECK: Falls der Kalender immer noch null ist (z.B. wegen Tippfehler in der ID)
+  if (!calendar) {
+    Logger.log("❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden. Bitte CALENDAR_ID überprüfen.");
+    return; // Beendet die Funktion sauber, statt abzustürzen
+  }
+
   const tomorrowStart = new Date();
   tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   tomorrowStart.setHours(0, 0, 0, 0);
