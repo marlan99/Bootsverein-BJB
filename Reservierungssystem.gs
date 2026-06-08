@@ -16,8 +16,8 @@ const CONFIG = {
 
   // <--- ONBOARDING & EXCEL-IMPORT EINSTELLUNGEN --->
   // true  = Willkommens-Mails werden abgefangen und NUR an den Vorstand gesendet
-  // false = Mails gehen direkt an die neuen Mitglieder und der Vorstand im CC
-  TEST_MODUS_AKTIV: true, 
+  // false = Mails gehen direkt an die neuen Mitglieder und der Vorstand im CC (Normalbetrieb).
+  TEST_MODUS_AKTIV: false, 
   // Einstellungen für den automatischen Excel-Listenimport
   EXCEL_SUBJECT: 'Mitgliederliste',
   EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
@@ -259,21 +259,34 @@ function validateRequest(data, userId, sender) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ─── NEU: PRÜFUNG DES FRÜHESTMÖGLICHEN STARTDATUMS ────────────────────────
-  const startDatumRaw = scriptProperties.getProperty('EARLIEST_BOOKING_DATE'); // Erwartet Format "TT.MM." oder "TT.MM"
+  // ─── NEU: PRÜFUNG DES FRÜHESTMÖGLICHEN STARTDATUMS (ZUKUNFTSSICHER) ──────
+  const startDatumRaw = scriptProperties.getProperty('EARLIEST_BOOKING_DATE'); // Erwartet Format "TT.MM.JJJJ"
+  
   if (startDatumRaw) {
     const parts = startDatumRaw.split('.');
-    const startTag = parseInt(parts[0], 10);
-    const startMonat = parseInt(parts[1], 10) - 1; // Monate sind 0-basiert
     
-    const earliestAllowedDate = new Date(today.getFullYear(), startMonat, startTag, 0, 0, 0, 0);
-    
-    if (today < earliestAllowedDate) {
-      const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${today.getFullYear()}`;
-      return { 
-        valid: false, 
-        error: `Das Reservierungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.` 
-      };
+    if (parts.length >= 3) {
+      const startTag = parseInt(parts[0], 10);
+      const startMonat = parseInt(parts[1], 10) - 1; // Monate sind 0-basiert
+      const startJahr = parseInt(parts[2], 10);
+      
+      // Sperre nur anwenden, wenn das hinterlegte Jahr dem aktuellen Jahr entspricht.
+      // Ist es ein altes Jahr, wird die Prüfung automatisch übersprungen.
+      if (startJahr === today.getFullYear()) {
+        const earliestAllowedDate = new Date(startJahr, startMonat, startTag, 0, 0, 0, 0);
+        
+        if (today < earliestAllowedDate) {
+          const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${startJahr}`;
+          return { 
+            valid: false, 
+            error: `Das Reservierungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.` 
+          };
+        }
+      } else if (startJahr < today.getFullYear()) {
+        Logger.log(`Hinweis: EARLIEST_BOOKING_DATE stammt aus dem Vorjahr (${startJahr}) und wird ignoriert.`);
+      }
+    } else {
+      Logger.log("Warnung: EARLIEST_BOOKING_DATE hat kein gültiges 'TT.MM.JJJJ'-Format.");
     }
   }
   // ──────────────────────────────────────────────────────────────────────────
@@ -369,7 +382,7 @@ function createCalendarEvent(data, userId) {
   try {
     const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
     
-    // ─── TITEL-PREFIX UND JOKER-LOGIK ANPASSEN ─────────────────────────
+    // ─── NEU: TITEL-PREFIX UND JOKER-LOGIK ANPASSEN ─────────────────────────
     const myPrefix = 'Boot:'; // <- HIER deinen gewünschten Prefix eintragen
     
     let title = '';
@@ -1072,8 +1085,6 @@ function fetchAndSyncAnleitungPDF() {
   }
   
   // Datei von GitHub abrufen
-  // Für GitHub-Links konvertieren wir zu raw, falls ein normaler Blob-Abruf scheitert, 
-  // aber UrlFetchApp holt standardmäßig die Antwort als Byte-Stream.
   let targetUrl = PDF_SOURCE_URL;
   if (targetUrl.includes('github.com') && !targetUrl.includes('raw.githubusercontent.com') && !targetUrl.includes('?raw=true')) {
     targetUrl = targetUrl.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
@@ -1097,8 +1108,6 @@ function fetchAndSyncAnleitungPDF() {
   }
   
   if (localFile) {
-    // Falls die Datei existiert, prüfen wir die Header ("Last-Modified"), falls vom Server bereitgestellt.
-    // GitHub Raw liefert zuverlässige Zeitstempel. Falls nicht lesbar, erzwingen wir Aktualisierung.
     const headers = response.getHeaders();
     const remoteLastModifiedStr = headers["Last-Modified"] || headers["last-modified"];
     let shouldUpdate = true;
@@ -1115,7 +1124,6 @@ function fetchAndSyncAnleitungPDF() {
     
     if (shouldUpdate) {
       Logger.log("🔄 Lokale PDF veraltet. Aktualisiere Dateiinhalt...");
-      // In Google Apps Script aktualisiert man Dateien via Drive-API oder Überschreiben des Blobs
       localFile.setContent(pdfBlob.getBytes());
     }
     
@@ -1133,54 +1141,35 @@ function fetchAndSyncAnleitungPDF() {
 
 /**
  * ZENTRALE SETUP-FUNKTION
- * Richtet die Tabelle, alle Labels und alle VIER benötigten Zeit-Trigger vollautomatisch ein.
+ * Richtet die Tabelle, alle Labels und alle TRIGGER vollautomatisch ein.
  */
 function setupTriggers() {
   Logger.log('========================================================================');
   Logger.log('🚀 STARTE CENTRAL SYSTEM SETUP...');
   Logger.log('========================================================================');
 
-  // SCHRITT 1: Datenbank und Tabellen-Struktur garantieren
   ensureInitialSheet();
 
-  // SCHRITT 1b: PDF-Anleitung synchronisieren und ID in den Objekteigenschaften speichern
   try {
     fetchAndSyncAnleitungPDF();
   } catch(pdfError) {
     Logger.log("⚠️ Warnung beim PDF-Sync: " + pdfError.toString());
   }
 
-  // SCHRITT 2: Bestehende Trigger bereinigen (Verhindert Doppelungen)
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
 
-  // SCHRITT 3: Alle 4 zeitgesteuerten Trigger neu anlegen
-  // 1. Reservierungsverarbeitung (alle 5 Minuten)
   ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create();
-
-  // 2. Tägliche Erinnerung um 04:00 Uhr morgens
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
-
-  // 3. Tägliches Onboarding um 08:00 Uhr morgens
   ScriptApp.newTrigger('checkAndWelcomeNewMembers').timeBased().everyDays(1).atHour(8).create();
-
-  // 4. Stündlicher Excel-Import der Mitgliederliste
   ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
 
-  // SCHRITT 4: Erforderliche Gmail-Labels anlegen
   ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
   });
   
   Logger.log('========================================================================');
   Logger.log('🎉 INTEGRIERTES GESAMT-SETUP ERFOLGREICH!');
-  Logger.log('1. Google Sheet "Mitgliederliste" steht bereit.');
-  Logger.log('2. E-Mail-Verarbeitung (alle 5 min) aktiv.');
-  Logger.log('3. Tägliche Erinnerungen (04:00 Uhr) aktiv.');
-  Logger.log('4. Onboarding-Prüfung (08:00 Uhr) aktiv.');
-  Logger.log('5. Stündlicher Excel-Import inkl. Tracking-System aktiv.');
-  Logger.log('6. PDF-Anleitung heruntergeladen & Speicherort abgeglichen.');
-  Logger.log('Alle Gmail-Labels wurden verifiziert bzw. erstellt.');
   Logger.log('========================================================================');
 }
 
@@ -1189,12 +1178,16 @@ function setupTriggers() {
 // =============================================================================
 
 /**
- * Hilfsfunktion, um das Startdatum für das aktuelle Jahr festzulegen.
- * Format: Tag.Monat. (z.B. '01.04.' für den 1. April)
+ * Hilfsfunktion, um das Startdatum festzulegen.
+ * Format: Tag.Monat.Jahr (wird automatisch mit dem aktuellen Jahr befüllt, z.B. '01.04.2026')
  */
 function setEarliestBookingDate() {
-  PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', '01.04.');
-  Logger.log('Frühestmögliches Startdatum wurde erfolgreich gesetzt!');
+  const aktuellesJahr = new Date().getFullYear();
+  // Hier den gewünschten Tag und Monat eintragen, das Jahr wird automatisch angehängt:
+  const zielDatum = '01.04.' + aktuellesJahr; 
+  
+  PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', zielDatum);
+  Logger.log(`Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`);
 }
 
 function resetWelcomeDatabase() {
