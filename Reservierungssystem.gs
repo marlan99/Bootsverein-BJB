@@ -204,6 +204,21 @@ function runAllTests() {
 }
 
 /**
+ * Setzt den Fortschritt der Testsuite komplett zurück,
+ * sodass der nächste Lauf wieder ganz von vorne beginnt.
+ */
+function resetTestSuite() {
+  const userProperties = PropertiesService.getUserProperties();
+  userProperties.deleteProperty('TS_CURRENT_INDEX');
+  userProperties.deleteProperty('TS_RESULTS');
+  
+  // Löscht auch eventuell noch wartende automatische Folge-Trigger
+  deleteTrigger('runAllTests');
+  
+  Logger.log("🔄 Testsuite erfolgreich zurückgesetzt! Der nächste Start von 'runAllTests' beginnt von vorn.");
+}
+
+/**
  * Hilfsfunktion: Löscht bestehende Trigger für eine bestimmte Funktion
  */
 function deleteTrigger(functionName) {
