@@ -19,9 +19,9 @@ const TEST_CONFIG = {
   RUN_TEST_STANDARD_LIMIT: true,          // ID 3 – Saison-Limit (1 aktiver Termin parallel)
   RUN_TEST_SLOT_TIMES: true,              // ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)
   RUN_TEST_INVALID_FORMAT: true,          // ID 9 – Intuitive Fehlermeldung bei Falschformat
-  RUN_TEST_REMINDER: false,               // ID 6 – Erinnerungsfunktion
-  RUN_TEST_SUCCESSFUL_CANCELLATION: false,// ID 10 – Erfolgreiche Stornierung
-  RUN_TEST_REJECTED_CANCELLATION: false,  // ID 11 – Abgelehnte Stornierung (24h-Frist)
+  RUN_TEST_REMINDER: true,                // ID 6 – Erinnerungsfunktion
+  RUN_TEST_SUCCESSFUL_CANCELLATION: true, // ID 10 – Erfolgreiche Stornierung
+  RUN_TEST_REJECTED_CANCELLATION: true,   // ID 11 – Abgelehnte Stornierung (24h-Frist)
   RUN_TEST_EUROPEAN_DATE_FORMATS: true,   // ID 12 – Flexibles europäisches Datums-Parsing
   RUN_SCALABILITY_TEST: true              // ID 7 – Skalierungstest (Systemstabilität)
 };
