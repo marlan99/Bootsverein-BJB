@@ -32,10 +32,6 @@ const CONFIG = {
 // 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN
 // =============================================================================
 
-// =============================================================================
-// 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN
-// =============================================================================
-
 function processReservationEmails() {
   // 1. Label holen oder erstellen, damit die Mails dort abgelegt werden können
   let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
@@ -246,6 +242,7 @@ function formatDateDDMMYYYY(date) {
 }
 
 function validateRequest(data, userId, sender) {
+  const scriptProperties = PropertiesService.getScriptProperties();
   const memberData = getAuthorizedUserData(userId);
   
   if (!memberData) {
@@ -261,6 +258,26 @@ function validateRequest(data, userId, sender) {
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // ─── NEU: PRÜFUNG DES FRÜHESTMÖGLICHEN STARTDATUMS ────────────────────────
+  const startDatumRaw = scriptProperties.getProperty('EARLIEST_BOOKING_DATE'); // Erwartet Format "TT.MM." oder "TT.MM"
+  if (startDatumRaw) {
+    const parts = startDatumRaw.split('.');
+    const startTag = parseInt(parts[0], 10);
+    const startMonat = parseInt(parts[1], 10) - 1; // Monate sind 0-basiert
+    
+    const earliestAllowedDate = new Date(today.getFullYear(), startMonat, startTag, 0, 0, 0, 0);
+    
+    if (today < earliestAllowedDate) {
+      const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${today.getFullYear()}`;
+      return { 
+        valid: false, 
+        error: `Das Reservierungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.` 
+      };
+    }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+  
   // Falls CALENDAR_ID leer ist, verwende den Standardkalender, andernfalls hole ihn per ID
   const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
 
@@ -351,18 +368,17 @@ function validateRequest(data, userId, sender) {
 function createCalendarEvent(data, userId) {
   try {
     const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
-    // 1. Definiere hier deinen gewünschten Prefix (z. B. "Boot" oder "BC1890")
-    const myPrefix = 'Boot:'; 
-
-    // 2. Erstelle den Titel basierend auf dem Buchungstyp (Joker oder Standard)
+    
+    // ─── TITEL-PREFIX UND JOKER-LOGIK ANPASSEN ─────────────────────────
+    const myPrefix = 'Boot:'; // <- HIER deinen gewünschten Prefix eintragen
+    
     let title = '';
     if (data.type === 'joker') {
-      // Wenn es ein Joker ist: "JOKER - PREFIX Name"
       title = `JOKER - ${myPrefix} ${data.name}`;
     } else {
-      // Wenn es eine Standardbuchung ist: "PREFIX Name"
       title = `${myPrefix} ${data.name}`;
     }
+    // ──────────────────────────────────────────────────────────────────────────
 
     const description = [
       `Name: ${data.name}`,
@@ -1169,8 +1185,17 @@ function setupTriggers() {
 }
 
 // =============================================================================
-// 7. ENTWICKLER-WERKZEUGE (MAINTENANCE)
+// 7. ENTWICKLER-WERKZEUGE (MAINTENANCE) & NEUE HILFSFUNKTIONEN
 // =============================================================================
+
+/**
+ * Hilfsfunktion, um das Startdatum für das aktuelle Jahr festzulegen.
+ * Format: Tag.Monat. (z.B. '01.04.' für den 1. April)
+ */
+function setEarliestBookingDate() {
+  PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', '01.04.');
+  Logger.log('Frühestmögliches Startdatum wurde erfolgreich gesetzt!');
+}
 
 function resetWelcomeDatabase() {
   PropertiesService.getScriptProperties().deleteProperty('WELCOMED_MEMBER_IDS');
