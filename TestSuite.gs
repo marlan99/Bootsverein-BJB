@@ -513,7 +513,7 @@ function testRejectedCancellation() {
   labelTestEmails();
   processReservationEmails();
   createTestEmail({ 
-    subject: 'Absage Termin', 
+    subject: 'Stornierung Termin', 
     body: `Datum: ${todayDate}\nSlot: Nachmittag` 
   });
   labelTestEmails();
