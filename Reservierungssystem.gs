@@ -874,9 +874,18 @@ function ausfuehrenKalenderSynchronisierung() {
       return;
     }
 
-    const currentAclEmails = CalendarApp.getCalendarById(kalenderId)
-      .getEditors()
-      .map(user => user.getEmail().trim().toLowerCase());
+    let currentAclEmails = [];
+    try {
+      currentAclEmails = DriveApp.getFileById(kalenderId)
+        .getEditors()
+        .map(user => user.getEmail().trim().toLowerCase());
+    } catch (driveError) {
+      Logger.log(`⚠️ Warnung beim ACL-Auslesen via DriveApp: ${driveError.message}`);
+      // Fallback, falls es der primäre Kalender ('primary') ist:
+      // Der primäre Kalender nutzt die eigene Mailadresse als ID.
+      currentAclEmails = DriveApp.getFolderById("root")
+        .getOwner().getEmail().trim().toLowerCase();
+    }
       
     Logger.log(`📅 Anzahl Personen mit Kalender-Zugriff aktuell: ${currentAclEmails.length}`);
 
