@@ -503,8 +503,8 @@ function tracklistchanges() {
     scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
     Logger.log('=== TRACKING BEENDET (Initialer Lauf) ===');
     
-    if (typeof checkAndWelcomeNewMembers === 'function') {
-      checkAndWelcomeNewMembers();
+    if (typeof checkAnd === 'function') {
+      checkAnd();
     }
     return;
   }
@@ -571,9 +571,9 @@ function tracklistchanges() {
   }
 
   // KETTENREAKTION: Am Ende des Trackings direkt das Onboarding triggern
-  if (typeof checkAndWelcomeNewMembers === 'function') {
-    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder (checkAndWelcomeNewMembers)...");
-    checkAndWelcomeNewMembers();
+  if (typeof checkAnd === 'function') {
+    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder (checkAnd)...");
+    checkAnd();
   }
 
   Logger.log('=== TRACKING BEENDET ===');
@@ -743,6 +743,14 @@ function checkAndWelcomeNewMembers() {
     // Zurück in Array konvertieren für Speicherung
     scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet]));
     Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
+    
+    // 🔥 JETZT MITGLIEDERBERECHTIGUNG AUSFÜHREN:
+    if (authorizationChanged && !isInitialRun) {
+      Logger.log("⚡ Änderungen an Mitgliedern erkannt. Starte Kalender-Berechtigungen SOFORT...");
+      ausfuehrenKalenderSynchronisierung();
+    } else {
+      Logger.log("ℹ️ Keine Berechtigungsänderungen im Onboarding. Keine Sofort-Kalendersynchronisierung notwendig.");
+    }
     
   } catch (e) {
     Logger.log('Fehler im Onboarding-Script: ' + e.message);
