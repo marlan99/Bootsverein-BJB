@@ -7,6 +7,7 @@
 const PDF_SOURCE_URL = 'https://raw.githubusercontent.com/marlan99/Bootsverein-BJB/main/Anleitung%20Bootsreservation.pdf';
 
 const CONFIG = {
+  SYSTEM_FOLDER_NAME: 'Google Kalender Reservierungssystem', // Zentraler Ordnername im Google Drive
   CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
   GMAIL_LABEL: 'Reservierung/Neu',
@@ -1072,7 +1073,7 @@ function getAuthorizedUserData(email) {
   // Automatisches Erstellen der Tabelle falls gelöscht oder nicht vorhanden
   if (!ss || !sheet || sheet.getLastRow() === 0) {
     try {
-      const folderName = "Google Kalender Reservierungssystem";
+      const folderName = CONFIG.SYSTEM_FOLDER_NAME;
       let targetFolder = DriveApp.getFoldersByName(folderName).hasNext() ? DriveApp.getFoldersByName(folderName).next() : DriveApp.createFolder(folderName);
 
       ss = SpreadsheetApp.create('Mitgliederliste');
