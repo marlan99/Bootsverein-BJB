@@ -878,7 +878,7 @@ function ausfuehrenKalenderSynchronisierung() {
 }
 
 // =============================================================================
-// 5. HILFSFUNKTIONEN & STORNIERUNGSLOGIK
+// 5. HILFSFUNKTIONEN & STORNIERUNGSLOGIK - OPTIMIERT
 // =============================================================================
 
 function executeCancellation(data, userId, thread, message) {
@@ -902,6 +902,7 @@ function executeCancellation(data, userId, thread, message) {
   const [sh, sm] = slotTime.start.split(':');
   terminStartZeit.setHours(sh, sm, 0, 0); 
 
+  // 24 Stunden Frist berechnen
   const stornierungsFrist = new Date(terminStartZeit.getTime() - (24 * 60 * 60 * 1000));
 
   if (jetzt > stornierungsFrist) {
@@ -915,34 +916,37 @@ function executeCancellation(data, userId, thread, message) {
     return; 
   }
 
-  const calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
   const terminEndZeit = new Date(terminStartZeit);
   const [eh, em] = slotTime.end.split(':');
   terminEndZeit.setHours(eh, em, 0, 0);
 
   const events = calendar.getEvents(terminStartZeit, terminEndZeit);
-  const userEvent = events.find(e => e.getDescription().includes(`Mitglieder-ID: ${memberData.id}`));
+  const userEvent = events.find(e => (e.getDescription() || '').includes(`Mitglieder-ID: ${memberData.id}`));
 
   if (userEvent) {
     if (userEvent.getTitle().toUpperCase().includes('JOKER')) {
-      GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden.`, { replyTo: CONFIG.ADMIN_EMAIL });
+      GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, { replyTo: CONFIG.ADMIN_EMAIL });
       return;
     }
 
     userEvent.deleteEvent(); 
-    GmailApp.sendEmail(userId, 'BestBTigung: Termin freigegeben', `Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    // OPTIMIERUNG 1: Tippfehler im Betreff korrigiert ("Bestätigung" statt "BestBTigung")
+    GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
     
     message.markRead();
     const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') || GmailApp.createLabel('Reservierung/Erledigt');
     thread.addLabel(labelErledigt);
     if (labelNeu) thread.removeLabel(labelNeu);
     thread.moveToArchive();
+  } else {
+    GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, { replyTo: CONFIG.ADMIN_EMAIL });
   }
 }
 
 function sendConfirmationEmail(to, event, data, thread) {
   const subject = 'Buchung bestätigt: ' + event.getTitle();
-  const htmlBody = `Hallo ${data.name},<br><br>dein Termin wurde erfolgreich eingetragen:<br><br>&#128197; <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>&#9200; <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br><br>Dein Vorstand`;
+  const htmlBody = `Hallo ${data.name},<br><br>dein Termin wurde erfolgreich eingetragen:<br><br>📅 <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>🕒 <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br><br>Dein Vorstand`;
   const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen.`;
 
   try {
@@ -962,13 +966,24 @@ function sendRejectionEmail(to, reason, thread) {
   }
 }
 
+// Globaler Cache zur Vermeidung mehrfacher Tabellen-I/O-Aufrufe während desselben Skript-Laufs
+let memberDataCache_ = null;
+
 function getAuthorizedUserData(email) {
+  const searchEmail = email.trim().toLowerCase();
+  
+  // OPTIMIERUNG 2: Cache-Abfrage spart wertvolle Millisekunden bei Schleifendurchläufen
+  if (memberDataCache_ && memberDataCache_[searchEmail]) {
+    return memberDataCache_[searchEmail];
+  }
+
   const scriptProperties = PropertiesService.getScriptProperties();
-  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
+  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
   let ss, sheet;
 
   try { if (sheetId) { ss = SpreadsheetApp.openById(sheetId); sheet = ss.getSheets()[0]; } } catch (e) {}
 
+  // Automatisches Erstellen der Tabelle falls gelöscht oder nicht vorhanden
   if (!ss || !sheet || sheet.getLastRow() === 0) {
     try {
       const folderName = "Google Kalender Reservierungssystem";
@@ -995,19 +1010,30 @@ function getAuthorizedUserData(email) {
     const lastRow = sheet.getLastRow();
     if (lastRow <= 1) return null; 
     const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
-    const searchEmail = email.trim().toLowerCase();
     
+    // Cache initialisieren
+    memberDataCache_ = {};
+    let foundUserData = null;
+
     for (let i = 0; i < dataRange.length; i++) {
-      if (dataRange[i][3] && dataRange[i][3].toString().trim().toLowerCase() === searchEmail) {
-        return {
-          id: dataRange[i][0] ? dataRange[i][0].toString().trim() : 'Keine ID', 
-          name: `${dataRange[i][1] || ''} ${dataRange[i][2] || ''}`.trim() || email,   
-          mobile: dataRange[i][4] ? dataRange[i][4].toString().trim() : 'Nicht hinterlegt'
-        };
+      const currentEmail = dataRange[i][3] ? dataRange[i][3].toString().trim().toLowerCase() : '';
+      if (!currentEmail) continue;
+
+      const userObj = {
+        id: dataRange[i][0] ? dataRange[i][0].toString().trim() : 'Keine ID', 
+        name: `${dataRange[i][1] || ''} ${dataRange[i][2] || ''}`.trim() || currentEmail,   
+        mobile: dataRange[i][4] ? dataRange[i][4].toString().trim() : 'Nicht hinterlegt'
+      };
+
+      // Alle Mitglieder in den Cache schreiben für zukünftige Suchen im selben Lauf
+      memberDataCache_[currentEmail] = userObj;
+
+      if (currentEmail === searchEmail) {
+        foundUserData = userObj;
       }
     }
+    return foundUserData;
   } catch (e) { return null; }
-  return null;
 }
 
 function getCurrentSeasonStart() {
@@ -1033,14 +1059,14 @@ function createGmailLabelStructure(fullLabelPath) {
 function sendDailyReservationReminders() {
   Logger.log("=== STARTE TÄGLICHE ERINNERUNGS-PRÜFUNG ===");
   
-  const calendar = CONFIG.CALENDAR_ID ? 
-    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
     
   if (!calendar) {
-    Logger.log("❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden. Bitte CALENDAR_ID überprüfen.");
+    Logger.log("❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden.");
     return; 
   }
 
+  // OPTIMIERUNG 3: Exakte "Morgen"-Zeitspanne berechnen
   const tomorrowStart = new Date();
   tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   tomorrowStart.setHours(0, 0, 0, 0);
@@ -1051,10 +1077,11 @@ function sendDailyReservationReminders() {
   const events = calendar.getEvents(tomorrowStart, tomorrowEnd);
   
   events.forEach(event => {
-    const emailMatch = (event.getDescription() || "").match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+    const desc = event.getDescription() || "";
+    const emailMatch = desc.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
     if (emailMatch && emailMatch[1]) {
       const slotName = event.getStartTime().getHours() === 8 ? "Vormittag (08:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
-      let body = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n📅 Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n⏱️ Slot: ${slotName}\n\nViel Spass!`;
+      let body = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n📅 Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n⏱️ Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
       GmailApp.sendEmail(emailMatch[1].trim(), `Erinnerung: Deine Boot Buchung für morgen!`, body);
     }
   });
@@ -1067,7 +1094,7 @@ function ensureInitialSheet() {
   if (!sheetId) {
     Logger.log("📂 Initialisiere Google Sheet und Ordnerstruktur für den Erststart...");
     getAuthorizedUserData(CONFIG.ADMIN_EMAIL);
-    Logger.log("✅ Google Sheet wurde erfolgreich im Google Drive angelegt (inkl. Strukturzeilen 1 & 2).");
+    Logger.log("✅ Google Sheet wurde erfolgreich im Google Drive angelegt.");
   } else {
     Logger.log("ℹ️ Google Sheet existiert bereits. ID: " + sheetId);
   }
@@ -1076,43 +1103,33 @@ function ensureInitialSheet() {
 function fetchAndSyncAnleitungPDF() {
   Logger.log("🔄 Synchronisiere PDF-Anleitung von GitHub...");
   const scriptProperties = PropertiesService.getScriptProperties();
-  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
-  if (!sheetId) {
-    Logger.log("⚠️ Fehler: SHEET_CONFIG_ID noch nicht vorhanden. Kann Pfad nicht ermitteln.");
-    return;
-  }
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  if (!sheetId) return;
   
   const sheetFile = DriveApp.getFileById(sheetId);
   const parents = sheetFile.getParents();
-  let targetFolder = DriveApp.getRootFolder();
-  if (parents.hasNext()) {
-    targetFolder = parents.next();
-  }
+  const targetFolder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
   
   let targetUrl = PDF_SOURCE_URL;
   
-  // GitHub-Raw-Parameter anhängen
-  if (targetUrl.includes('github.com') && !targetUrl.includes('?raw=true')) {
-    targetUrl += targetUrl.includes('?') ? '&raw=true' : '?raw=true';
+  // OPTIMIERUNG 4: Korrekte Übersetzung in die GitHub-RAW-Domain zur Vermeidung von PDF-Korruption
+  if (targetUrl.includes('github.com')) {
+    targetUrl = targetUrl
+      .replace('github.com', 'raw.githubusercontent.com')
+      .replace('/blob/', '/');
   }
   
   Logger.log("📥 Rufe URL ab: " + targetUrl);
   const response = UrlFetchApp.fetch(targetUrl, { muteHttpExceptions: true });
   if (response.getResponseCode() !== 200) {
-    Logger.log("❌ Fehler beim Abrufen der PDF von URL: " + response.getResponseCode());
+    Logger.log("❌ Fehler beim Abrufen der PDF von GitHub: " + response.getResponseCode());
     return;
   }
   
-  // Blob explizit als PDF deklarieren
   const pdfBlob = response.getBlob().setContentType("application/pdf").setName("Anleitung Bootsreservation.pdf");
-  
   const fileName = "Anleitung Bootsreservation.pdf";
   const files = targetFolder.getFilesByName(fileName);
-  let localFile = null;
-  
-  if (files.hasNext()) {
-    localFile = files.next();
-  }
+  let localFile = files.hasNext() ? files.next() : null;
   
   if (localFile) {
     const headers = response.getHeaders();
@@ -1122,38 +1139,28 @@ function fetchAndSyncAnleitungPDF() {
     if (remoteLastModifiedStr) {
       const remoteDate = new Date(remoteLastModifiedStr);
       const localDate = new Date(localFile.getLastUpdated());
-      
       if (remoteDate <= localDate) {
         shouldUpdate = false;
-        Logger.log("ℹ️ Lokale PDF ist aktuell oder neuer als die Online-Version. Keine Aktualisierung nötig.");
+        Logger.log("ℹ️ Lokale PDF ist auf dem neuesten Stand.");
       }
     }
     
     if (shouldUpdate) {
-      Logger.log("🔄 Lokale PDF veraltet oder korrupt. Ersetze Datei...");
-      // Um Mime-Type-Fehler und korrupte Alt-Inhalte zu vermeiden: 
-      // Altes File löschen und neu erstellen
+      Logger.log("🔄 Lokale PDF veraltet. Ersetze Datei...");
       localFile.setTrashed(true);
       const newFile = targetFolder.createFile(pdfBlob);
       scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
-      Logger.log(`📌 PDF aktualisiert. Neue File-ID registriert: ${newFile.getId()}`);
     } else {
       scriptProperties.setProperty('PDF_FILE_ID', localFile.getId());
-      Logger.log(`📌 Bestehende PDF File-ID registriert: ${localFile.getId()}`);
     }
     
   } else {
-    Logger.log("📥 PDF existiert lokal nicht. Erstelle neue Datei im Zielverzeichnis...");
+    Logger.log("📥 PDF existiert lokal nicht. Erstelle neue Datei...");
     const newFile = targetFolder.createFile(pdfBlob);
     scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
-    Logger.log(`📌 Neue PDF File-ID registriert: ${newFile.getId()}`);
   }
 }
 
-/**
- * ZENTRALE SETUP-FUNKTION
- * Richtet die Tabelle, alle Labels und alle TRIGGER vollautomatisch ein.
- */
 function setupTriggers() {
   Logger.log('========================================================================');
   Logger.log('🚀 STARTE CENTRAL SYSTEM SETUP...');
@@ -1170,10 +1177,10 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
 
-  // Nur noch die drei wirklich notwendigen, voneinander unabhängigen Trigger einrichten
+  // Trigger-Definitionen
   ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create();
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
-  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create(); // Startet Excel -> Tracking -> Onboarding
+  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create(); 
 
   ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
@@ -1185,17 +1192,11 @@ function setupTriggers() {
 }
 
 // =============================================================================
-// 7. ENTWICKLER-WERKZEUGE (MAINTENANCE) & NEUE HILFSFUNKTIONEN
+// 7. ENTWICKLER-WERKZEUGE (MAINTENANCE)
 // =============================================================================
 
-/**
- * Hilfsfunktion, um das Startdatum festzulegen.
- * Format: Tag.Monat.Jahr (wird automatisch mit dem aktuellen Jahr befüllt, z.B. '01.04.2026')
- */
 function setEarliestBookingDate() {
-  const aktuellesJahr = new Date().getFullYear();
-  const zielDatum = '01.04.' + aktuellesJahr; 
-  
+  const zielDatum = '01.04.' + new Date().getFullYear(); 
   PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', zielDatum);
   Logger.log(`Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`);
 }
