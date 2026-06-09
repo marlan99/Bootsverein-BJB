@@ -750,13 +750,13 @@ function checkAndWelcomeNewMembers() {
     scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet]));
     Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
-    // 🔥 JETZT MITGLIEDERBERECHTIGUNG AUSFÜHREN:
-    if (mailsSentCount > 0 && !isInitialRun) {
-      Logger.log("⚡ Änderungen an Mitgliedern erkannt. Starte Kalender-Berechtigungen SOFORT...");
-      ausfuehrenKalenderSynchronisierung();
-    } else {
-      Logger.log("ℹ️ Keine Berechtigungsänderungen im Onboarding. Keine Sofort-Kalendersynchronisierung notwendig.");
-    }
+    // 🔥 JETZT MITGLIEDERBERECHTIGUNG AUSFÜHREN: --> Google API unterbindet die automatisierte Rechtevergabe. Daher wird die Funktion auskommentiert
+//    if (mailsSentCount > 0 && !isInitialRun) {
+//      Logger.log("⚡ Änderungen an Mitgliedern erkannt. Starte Kalender-Berechtigungen SOFORT...");
+//      ausfuehrenKalenderSynchronisierung();
+//    } else {
+//      Logger.log("ℹ️ Keine Berechtigungsänderungen im Onboarding. Keine Sofort-Kalendersynchronisierung notwendig.");
+//    }
     
   } catch (e) {
     Logger.log('Fehler im Onboarding-Script: ' + e.message);
