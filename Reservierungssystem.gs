@@ -4,7 +4,8 @@
 // =============================================================================
 
 // Globale URL-Quelle für die PDF-Anleitung
-const PDF_SOURCE_URL = 'https://github.com/marlan99/Bootsverein-BJB/blob/main/Anleitung%20Bootsreservation.pdf';
+const PDF_SOURCE_URL = 'https://raw.githubusercontent.com/marlan99/Bootsverein-BJB/main/Anleitung%20Bootsreservation.pdf';
+// const PDF_SOURCE_URL = 'https://github.com/marlan99/Bootsverein-BJB/blob/main/Anleitung%20Bootsreservation.pdf';
 
 const CONFIG = {
   CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
@@ -1006,7 +1007,7 @@ function sendConfirmationEmail(to, event, data, thread) {
   const subject = 'Buchung bestätigt: ' + event.getTitle();
   
   // 1. Der reine Text-Body (Fallback) erhält ebenfalls saubere Emojis
-  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\n📅 Datum: ${formatDateDDMMYYYY(data.parsedDate)}\n🕒 Slot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\n\nDein Vorstand`;
+  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\nDatum: ${formatDateDDMMYYYY(data.parsedDate)}\nSlot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\n\nDein Vorstand`;
   
   // 2. Der HTML-Body (erzwingt die korrekte Codierung im Mail-Client)
   const htmlBody = `
@@ -1014,8 +1015,8 @@ function sendConfirmationEmail(to, event, data, thread) {
       <p>Hallo ${data.name},</p>
       <p>dein Termin wurde erfolgreich eingetragen:</p>
       <p style="line-height: 1.6;">
-        📅 <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>
-        🕒 <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}
+        &#128197; <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>
+        &#9200; <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}
       </p>
       <p>Dein Vorstand</p>
     </div>
@@ -1183,7 +1184,7 @@ function ensureInitialSheet() {
 }
 
 function fetchAndSyncAnleitungPDF() {
-  Logger.log("🔄 Synchronisiere PDF-Anleitung von GitHub...");
+  Logger.log("📄 Prüfe PDF-Anleitung auf Aktualisierungen...");
   const scriptProperties = PropertiesService.getScriptProperties();
   const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
   if (!sheetId) return;
@@ -1191,53 +1192,81 @@ function fetchAndSyncAnleitungPDF() {
   const sheetFile = DriveApp.getFileById(sheetId);
   const parents = sheetFile.getParents();
   const targetFolder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  
   let targetUrl = PDF_SOURCE_URL;
   
-  // OPTIMIERUNG 4: Korrekte Übersetzung in die GitHub-RAW-Domain zur Vermeidung von PDF-Korruption
-  if (targetUrl.includes('github.com')) {
+  // Korrekte Übersetzung in die GitHub-RAW-Domain
+  if (targetUrl.includes('github.com') && !targetUrl.includes('raw.githubusercontent.com')) {
     targetUrl = targetUrl
       .replace('github.com', 'raw.githubusercontent.com')
       .replace('/blob/', '/');
   }
-  
-  Logger.log("📥 Rufe URL ab: " + targetUrl);
-  const response = UrlFetchApp.fetch(targetUrl, { muteHttpExceptions: true });
-  if (response.getResponseCode() !== 200) {
-    Logger.log("❌ Fehler beim Abrufen der PDF von GitHub: " + response.getResponseCode());
-    return;
-  }
-  
-  const pdfBlob = response.getBlob().setContentType("application/pdf").setName("Anleitung Bootsreservation.pdf");
-  const fileName = "Anleitung Bootsreservation.pdf";
-  const files = targetFolder.getFilesByName(fileName);
-  let localFile = files.hasNext() ? files.next() : null;
-  
-  if (localFile) {
-    const headers = response.getHeaders();
-    const remoteLastModifiedStr = headers["Last-Modified"] || headers["last-modified"];
-    let shouldUpdate = true;
-    if (remoteLastModifiedStr) {
-      const remoteDate = new Date(remoteLastModifiedStr);
-      const localDate = new Date(localFile.getLastUpdated());
-      if (remoteDate <= localDate) {
-        shouldUpdate = false;
-        Logger.log("ℹ️ Lokale PDF ist auf dem neuesten Stand.");
+
+  // Hole den gespeicherten ETag des letzten Downloads
+  const lastSeenTag = scriptProperties.getProperty('PDF_LAST_ETAG') || '';
+
+  try {
+    const params = {
+      method: "get",
+      muteHttpExceptions: true, // Verhindert den Absturz bei Statuscodes wie 304 oder 404
+      headers: {}
+    };
+
+    // Nur mitsenden, wenn wir bereits einen ETag haben
+    if (lastSeenTag) {
+      params.headers["If-None-Match"] = lastSeenTag;
+    }
+
+    // Sende den Request an GitHub
+    const response = UrlFetchApp.fetch(targetUrl, params);
+    const responseCode = response.getResponseCode();
+
+    // Status 304 bedeutet: "Not Modified" -> Datei ist identisch!
+    if (responseCode === 304) {
+      Logger.log("✅ PDF auf GitHub ist unverändert. Kein Download erforderlich.");
+      
+      // Falls die ID im Speicher verloren ging, suchen wir sie kurz im Ordner
+      if (!scriptProperties.getProperty('PDF_FILE_ID')) {
+        const files = targetFolder.getFilesByName("Anleitung Bootsreservation.pdf");
+        if (files.hasNext()) {
+          scriptProperties.setProperty('PDF_FILE_ID', files.next().getId());
+        }
       }
+      return;
+    }
+
+    if (responseCode !== 200) {
+      Logger.log("❌ Fehler beim Abrufen der PDF von GitHub. Status-Code: " + responseCode);
+      return;
+    }
+
+    // Hole den neuen ETag aus den Response-Headern (GitHub liefert ETags in Anführungszeichen)
+    const headers = response.getHeaders();
+    const currentETag = headers["ETag"] || headers["etag"] || headers["Last-Modified"] || "";
+
+    Logger.log("🔄 Neue Version erkannt oder kein Cache vorhanden. Aktualisiere Datei...");
+    const pdfBlob = response.getBlob().setContentType("application/pdf").setName("Anleitung Bootsreservation.pdf");
+    
+    // Alte Datei suchen und entfernen
+    const fileName = "Anleitung Bootsreservation.pdf";
+    const files = targetFolder.getFilesByName(fileName);
+    if (files.hasNext()) {
+      const oldFile = files.next();
+      oldFile.setTrashed(true);
     }
     
-    if (shouldUpdate) {
-      Logger.log("🔄 Lokale PDF veraltet. Ersetze Datei...");
-      localFile.setTrashed(true);
-      const newFile = targetFolder.createFile(pdfBlob);
-      scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
-    } else {
-      scriptProperties.setProperty('PDF_FILE_ID', localFile.getId());
-    }
-    
-  } else {
-    Logger.log("📥 PDF existiert lokal nicht. Erstelle neue Datei...");
+    // Neue Datei erstellen
     const newFile = targetFolder.createFile(pdfBlob);
     scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
+    
+    // Den neuen ETag für das nächste Mal speichern
+    if (currentETag) {
+      scriptProperties.setProperty('PDF_LAST_ETAG', currentETag);
+    }
+    Logger.log("✅ PDF-Anleitung erfolgreich aktualisiert und ID gespeichert.");
+
+  } catch (error) {
+    Logger.log("⚠️ Ausnahmefehler im fetchAndSyncAnleitungPDF: " + error.toString());
   }
 }
 
@@ -1281,15 +1310,15 @@ function setupTriggers() {
   Logger.log('========================================================================');
 
   // Initialisiert das frühestmögliche Buchungsdatum beim Setup
-  if (typeof setearliestbookingdate === 'function') {
+  if (typeof setEarliestBookingDate === 'function') {
     try {
-      setearliestbookingdate();
-      Logger.log('✅ setearliestbookingdate erfolgreich ausgeführt.');
+      setEarliestBookingDate();
+      Logger.log('✅ Das frühest mögliche Buchungsdatum wurde gesetzt.');
     } catch(bookingDateError) {
-      Logger.log("⚠️ Warnung bei setearliestbookingdate: " + bookingDateError.toString());
+      Logger.log("⚠️ Warnung bei setEarliestBookingDate: " + bookingDateError.toString());
     }
   } else {
-    Logger.log("⚠️ Hinweis: Die Funktion setearliestbookingdate wurde im Skript nicht gefunden.");
+    Logger.log("⚠️ Hinweis: Die Funktion setEarliestBookingDate wurde im Skript nicht gefunden.");
   }
 
   ensureInitialSheet();
