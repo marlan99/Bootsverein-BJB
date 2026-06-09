@@ -4,18 +4,18 @@
 // =============================================================================
 
 // Globale URL-Quelle für die PDF-Anleitung
-const PDF_SOURCE_URL = 'https://github.com/marlan99/Bootsverein-BJB/blob/main/Anleitung%20Bootsreservation.pdf'; [cite: 1]
+const PDF_SOURCE_URL = 'https://github.com/marlan99/Bootsverein-BJB/blob/main/Anleitung%20Bootsreservation.pdf';
 
 const CONFIG = {
-  CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird [cite: 2]
-  ADMIN_EMAIL: Session.getActiveUser().getEmail(), [cite: 2]
-  GMAIL_LABEL: 'Reservierung/Neu',               [cite: 2]
-  SLOT_VORMITTAG: { start: '08:00', end: '14:00' }, [cite: 2]
-  SLOT_NACHMITTAG: { start: '14:00', end: '20:00' }, [cite: 2]
-  EXCEL_SUBJECT: 'Mitgliederliste', [cite: 2]
-  EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste', [cite: 2]
-  TEST_MODUS_AKTIV: false, [cite: 2]
-  TRACKING_TEST_MODUS_AKTIV: false, [cite: 2]
+  CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
+  ADMIN_EMAIL: Session.getActiveUser().getEmail(),
+  GMAIL_LABEL: 'Reservierung/Neu',
+  SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
+  SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
+  EXCEL_SUBJECT: 'Mitgliederliste',
+  EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
+  TEST_MODUS_AKTIV: false,
+  TRACKING_TEST_MODUS_AKTIV: false,
 };
 
 // =============================================================================
@@ -23,17 +23,17 @@ const CONFIG = {
 // =============================================================================
 
 function processReservationEmails() {
-  let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL) || createGmailLabelStructure(CONFIG.GMAIL_LABEL); [cite: 3]
+  let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL) || createGmailLabelStructure(CONFIG.GMAIL_LABEL);
 
   // OPTIMIERUNG 1: Kombinierte Suchanfrage spart API-Quota und verhindert Doppelverarbeitung
-  const emailThreads = GmailApp.search('in:inbox (subject:"Reservierung" OR subject:"Stornierung")'); [cite: 4]
-  Logger.log(`Gefundene relevante Threads im Posteingang: ${emailThreads.length}`); [cite: 5]
+  const emailThreads = GmailApp.search('in:inbox (subject:"Reservierung" OR subject:"Stornierung")');
+  Logger.log(`Gefundene relevante Threads im Posteingang: ${emailThreads.length}`);
   
   // OPTIMIERUNG 2: Kalender-Instanz EINMALIG holen und wiederverwenden
-  const calendar = CONFIG.CALENDAR_ID ? [cite: 5]
-    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar(); [cite: 6]
+  const calendar = CONFIG.CALENDAR_ID ?
+    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
   if (!calendar) {
-    Logger.log('❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden.'); [cite: 6]
+    Logger.log('❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden.');
     return;
   }
 
@@ -43,12 +43,12 @@ function processReservationEmails() {
   const threadsStorniert = [];
 
   emailThreads.forEach(thread => {
-    const messages = thread.getMessages(); [cite: 7]
+    const messages = thread.getMessages();
     messages.forEach(message => {
-      if (message.isUnread()) { [cite: 7]
+      if (message.isUnread()) {
         // Optimierung 4: Sofort als gelesen markieren, um Endlosschleifen bei Timeouts zu verhindern
         message.markRead();
-        thread.addLabel(labelNeu); [cite: 7]
+        thread.addLabel(labelNeu);
         
         // Verarbeiten und den Thread anhand des Rückgabestatus kategorisieren
         const status = processSingleEmail(message, thread, calendar);
@@ -66,14 +66,16 @@ function processReservationEmails() {
 
   // Batch-Label-Zuweisung außerhalb der Schleife (Optimierung 1)
   if (threadsErledigt.length > 0) {
-    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') || GmailApp.createLabel('Reservierung/Erledigt');
+    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') ||
+      GmailApp.createLabel('Reservierung/Erledigt');
     GmailApp.addLabelsToThreads([labelErledigt], threadsErledigt);
     GmailApp.removeLabelsFromThreads([labelNeu], threadsErledigt);
     GmailApp.moveThreadsToArchive(threadsErledigt);
   }
   
   if (threadsAbgelehnt.length > 0) {
-    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
+    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') ||
+      GmailApp.createLabel('Reservierung/Abgelehnt');
     GmailApp.addLabelsToThreads([labelAbgelehnt], threadsAbgelehnt);
     GmailApp.removeLabelsFromThreads([labelNeu], threadsAbgelehnt);
     GmailApp.moveThreadsToArchive(threadsAbgelehnt);
@@ -85,48 +87,48 @@ function processReservationEmails() {
 }
 
 function processSingleEmail(message, thread, calendar) {
-  const sender = message.getFrom().match(/[\w.-]+@[\w.-]+/)?.[0] || 'unbekannt'; [cite: 8]
-  const subject = message.getSubject().toLowerCase(); [cite: 8]
-  const body = message.getPlainBody(); [cite: 8]
-  const data = parseEmailTemplate(body); [cite: 9]
+  const sender = message.getFrom().match(/[\w.-]+@[\w.-]+/)?.[0] || 'unbekannt';
+  const subject = message.getSubject().toLowerCase();
+  const body = message.getPlainBody();
+  const data = parseEmailTemplate(body);
   
   // Optimierung 3: Fehlerhaften Zugriff CONFIG.CONFIG? korrigiert auf CONFIG.GMAIL_LABEL
-  const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL); [cite: 9]
+  const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
 
-  if (!data.valid) { [cite: 12]
-    sendRejectionEmail(sender, data.error, thread); [cite: 12]
+  if (!data.valid) {
+    sendRejectionEmail(sender, data.error, thread);
     return 'ABGELEHNT';
   }
 
-  const userId = sender; [cite: 12]
+  const userId = sender;
   // Erleichterte Erkennung von Stornierungen
-  if (subject.includes('stornierung') || subject.includes('absage')) { [cite: 13]
-    const cancellationSuccess = executeCancellation(data, userId, thread, message); [cite: 13]
+  if (subject.includes('stornierung') || subject.includes('absage')) {
+    const cancellationSuccess = executeCancellation(data, userId, thread, message);
     return cancellationSuccess ? 'STORNIERT' : 'ABGELEHNT';
   }
 
   // Kalender wird hier direkt übergeben
-  const validation = validateRequest(data, userId, sender, calendar); [cite: 14]
-  if (!validation.valid) { [cite: 14]
-    sendRejectionEmail(sender, validation.error, thread); [cite: 15]
+  const validation = validateRequest(data, userId, sender, calendar);
+  if (!validation.valid) {
+    sendRejectionEmail(sender, validation.error, thread);
     return 'ABGELEHNT';
   }
 
   // Kalender wird hier direkt übergeben
-  const event = createCalendarEvent(data, userId, calendar); [cite: 16]
-  if (event) { [cite: 17]
-    sendConfirmationEmail(sender, event, data, thread); [cite: 17]
+  const event = createCalendarEvent(data, userId, calendar);
+  if (event) {
+    sendConfirmationEmail(sender, event, data, thread);
     return 'ERLEDIGT';
   } else {
-    sendRejectionEmail(sender, 'Fehler beim Erstellen des Termins im Google Kalender.', thread); [cite: 18]
+    sendRejectionEmail(sender, 'Fehler beim Erstellen des Termins im Google Kalender.', thread);
     return 'ABGELEHNT';
   }
 }
 
 function parseEmailTemplate(body) {
   // OPTIMIERUNG 3: Regex-Split fängt Windows-Zeilenumbrüche (\r\n) sauber ab
-  const lines = body.split(/\r?\n/).map(l => l.trim()); [cite: 19]
-  const data = { valid: false }; [cite: 20]
+  const lines = body.split(/\r?\n/).map(l => l.trim());
+  const data = { valid: false };
 
   const fields = {
     'Datum': 'date',
@@ -134,174 +136,176 @@ function parseEmailTemplate(body) {
     'Typ': 'type',
     'Beschreibung': 'description',
     'Anlass': 'occasion'
-  }; [cite: 20]
-  lines.forEach(line => { [cite: 21]
+  };
+  lines.forEach(line => {
     for (const [key, prop] of Object.entries(fields)) {
-      if (line.toLowerCase().startsWith(key.toLowerCase() + ':')) { // Tolerant gegenüber Groß-/Kleinschreibung beim Key [cite: 21]
-        data[prop] = line.substring(key.length + 1).trim(); [cite: 21]
+      if (line.toLowerCase().startsWith(key.toLowerCase() + ':')) { // Tolerant gegenüber Groß-/Kleinschreibung beim Key
+        data[prop] = line.substring(key.length + 1).trim();
       }
     }
-  }); [cite: 21]
-  if (!data.date || !data.slot) { [cite: 22]
-    data.error = 'Fehlende Pflichtfelder im Text: "Datum:" oder "Slot:" konnten nicht extrahiert werden.'; [cite: 22]
-    return data; [cite: 23]
+  });
+  if (!data.date || !data.slot) {
+    data.error = 'Fehlende Pflichtfelder im Text: "Datum:" oder "Slot:" konnten nicht extrahiert werden.';
+    return data;
   }
 
-  data.parsedDate = parseEuropeanDate(data.date); [cite: 23]
+  data.parsedDate = parseEuropeanDate(data.date);
 
-  if (!data.parsedDate || isNaN(data.parsedDate.getTime())) { [cite: 23]
-    data.error = 'Ungültiges Datum. Das Datum konnte nicht erkannt werden (Erlaubt z.B.: 05.06.2026, 5.6.2026, 5/6/2026 oder 5. Juni 2026).'; [cite: 23, 24]
-    return data; [cite: 24]
+  if (!data.parsedDate || isNaN(data.parsedDate.getTime())) {
+    data.error = 'Ungültiges Datum. Das Datum konnte nicht erkannt werden (Erlaubt z.B.: 05.06.2026, 5.6.2026, 5/6/2026 oder 5. Juni 2026).';
+    return data;
   }
 
-  data.parsedDate.setHours(0, 0, 0, 0); [cite: 25]
+  data.parsedDate.setHours(0, 0, 0, 0);
 
-  data.slot = data.slot.toLowerCase(); [cite: 25]
-  if (!['vormittag', 'nachmittag'].includes(data.slot)) { [cite: 25]
-    data.error = 'Der angegebene Slot ist ungültig. Erlaubt ist: "Vormittag" oder "Nachmittag".'; [cite: 25, 26]
-    return data; [cite: 26]
+  data.slot = data.slot.toLowerCase();
+  if (!['vormittag', 'nachmittag'].includes(data.slot)) {
+    data.error = 'Der angegebene Slot ist ungültig. Erlaubt ist: "Vormittag" oder "Nachmittag".';
+    return data;
   }
 
-  data.type = data.type ? data.type.toLowerCase() : 'standard'; [cite: 26]
-  if (!['standard', 'joker'].includes(data.type)) { [cite: 27]
-    data.error = 'Der Typ kann nur "Standard" oder "Joker" sein.'; [cite: 27]
-    return data; [cite: 28]
+  data.type = data.type ? data.type.toLowerCase() : 'standard';
+  if (!['standard', 'joker'].includes(data.type)) {
+    data.error = 'Der Typ kann nur "Standard" oder "Joker" sein.';
+    return data;
   }
 
-  data.valid = true; [cite: 28]
-  return data; [cite: 28]
+  data.valid = true;
+  return data;
 }
 
 // Akzeptiert jetzt die bestehende Kalenderinstanz
 function validateRequest(data, userId, sender, calendar) {
-  const scriptProperties = PropertiesService.getScriptProperties(); [cite: 28]
-  const memberData = getAuthorizedUserData(userId); [cite: 29]
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const memberData = getAuthorizedUserData(userId);
   
-  if (!memberData) { [cite: 29]
+  if (!memberData) {
     return { 
       valid: false, 
-      error: `Deine E-Mail-Adresse (${userId}) ist nicht für das Reservierungssystem freigeschaltet. Bitte wende dich an den Vorstand.` [cite: 29, 30]
+      error: `Deine E-Mail-Adresse (${userId}) ist nicht für das Reservierungssystem freigeschaltet. Bitte wende dich an den Vorstand.`
     };
   }
   
-  data.memberId = memberData.id; [cite: 30]
-  data.memberMobile = memberData.mobile; [cite: 31]
-  if (memberData.name) data.name = memberData.name; [cite: 31]
+  data.memberId = memberData.id;
+  data.memberMobile = memberData.mobile;
+  if (memberData.name) data.name = memberData.name;
   
-  const today = new Date(); [cite: 31]
-  today.setHours(0, 0, 0, 0); [cite: 31]
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   // Prüfen des frühestmöglichen Startdatums
-  const startDatumRaw = scriptProperties.getProperty('EARLIEST_BOOKING_DATE'); [cite: 32]
-  if (startDatumRaw) { [cite: 32]
-    const parts = startDatumRaw.split('.'); [cite: 32]
-    if (parts.length >= 3) { [cite: 33]
-      const startTag = parseInt(parts[0], 10); [cite: 33]
-      const startMonat = parseInt(parts[1], 10) - 1; [cite: 34]
-      const startJahr = parseInt(parts[2], 10); [cite: 34]
-      if (startJahr === today.getFullYear()) { [cite: 35]
-        const earliestAllowedDate = new Date(startJahr, startMonat, startTag, 0, 0, 0, 0); [cite: 35]
-        if (today < earliestAllowedDate) { [cite: 36]
-          const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${startJahr}`; [cite: 36]
+  const startDatumRaw = scriptProperties.getProperty('EARLIEST_BOOKING_DATE');
+  if (startDatumRaw) {
+    const parts = startDatumRaw.split('.');
+    if (parts.length >= 3) {
+      const startTag = parseInt(parts[0], 10);
+      const startMonat = parseInt(parts[1], 10) - 1;
+      const startJahr = parseInt(parts[2], 10);
+      if (startJahr === today.getFullYear()) {
+        const earliestAllowedDate = new Date(startJahr, startMonat, startTag, 0, 0, 0, 0);
+        if (today < earliestAllowedDate) {
+          const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${startJahr}`;
           return { 
             valid: false, 
-            error: `Das Reservierungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.` [cite: 37, 38]
+            error: `Das Reservierungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.`
           };
         }
       }
     }
   }
 
-  if (data.parsedDate < today) { [cite: 39]
-    return { valid: false, error: 'Das gewählte Datum liegt in der Vergangenheit.' }; [cite: 39, 40]
+  if (data.parsedDate < today) {
+    return { valid: false, error: 'Das gewählte Datum liegt in der Vergangenheit.' };
   }
 
-  const seasonStart = getCurrentSeasonStart(); [cite: 40]
+  const seasonStart = getCurrentSeasonStart();
 
   // JOKER-VALIDIERUNG
-  if (data.type === 'joker') { [cite: 40]
-    if (data.parsedDate.getFullYear() !== today.getFullYear()) { [cite: 40]
-      return { valid: false, error: `Joker-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` }; [cite: 40]
+  if (data.type === 'joker') {
+    if (data.parsedDate.getFullYear() !== today.getFullYear()) {
+      return { valid: false, error: `Joker-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` };
     }
 
-    const seasonEnd = new Date(seasonStart); [cite: 41]
-    seasonEnd.setFullYear(seasonStart.getFullYear() + 1); [cite: 41]
+    const seasonEnd = new Date(seasonStart);
+    seasonEnd.setFullYear(seasonStart.getFullYear() + 1);
 
-    const allEvents = calendar.getEvents(seasonStart, seasonEnd); [cite: 41]
-    const jokerEvents = allEvents.filter(e => { [cite: 42]
-      const desc = e.getDescription() || ''; [cite: 42]
-      const title = e.getTitle() || ''; [cite: 42]
-      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && title.includes('JOKER'); [cite: 42]
-    }); [cite: 42]
-    if (jokerEvents.length >= 2) { [cite: 43]
-      return { valid: false, error: 'Du hast bereits das Maximum von 2 Joker-Terminen in dieser Saison erreicht.' }; [cite: 43, 44]
+    const allEvents = calendar.getEvents(seasonStart, seasonEnd);
+    const jokerEvents = allEvents.filter(e => {
+      const desc = e.getDescription() || '';
+      const title = e.getTitle() || '';
+      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && title.includes('JOKER');
+    });
+
+    if (jokerEvents.length >= 2) {
+      return { valid: false, error: 'Du hast bereits das Maximum von 2 Joker-Terminen in dieser Saison erreicht.' };
     }
   }
 
   // STANDARD-VALIDIERUNG
-  if (data.type === 'standard') { [cite: 44]
-    if (data.parsedDate.getFullYear() !== today.getFullYear()) { [cite: 44]
-      return { valid: false, error: `Standard-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` }; [cite: 44]
+  if (data.type === 'standard') {
+    if (data.parsedDate.getFullYear() !== today.getFullYear()) {
+      return { valid: false, error: `Standard-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` };
     }
 
-    const seasonEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59); [cite: 45]
-    const existingEvents = calendar.getEvents(seasonStart, seasonEnd); [cite: 45]
-    const activeStandardEvents = existingEvents.filter(e => { [cite: 46]
-      const desc = e.getDescription() || ''; [cite: 46]
-      const title = e.getTitle() || ''; [cite: 46]
-      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && !title.includes('JOKER') && e.getStartTime() >= today; [cite: 46]
-    }); [cite: 46]
-    if (activeStandardEvents.length > 0) { [cite: 47]
-      const bestehenderTermin = activeStandardEvents[0]; [cite: 47]
+    const seasonEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
+    const existingEvents = calendar.getEvents(seasonStart, seasonEnd);
+    const activeStandardEvents = existingEvents.filter(e => {
+      const desc = e.getDescription() || '';
+      const title = e.getTitle() || '';
+      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && !title.includes('JOKER') && e.getStartTime() >= today;
+    });
+
+    if (activeStandardEvents.length > 0) {
+      const bestehenderTermin = activeStandardEvents[0];
       return {
         valid: false,
-        error: `Du hast bereits einen aktiven Standard-Termin gebucht (am ${formatDateDDMMYYYY(bestehenderTermin.getStartTime())}). Erst wenn dieser Termin vorbei ist, kannst du einen neuen Standard-Termin vereinbaren.` [cite: 48, 49]
+        error: `Du hast bereits einen aktiven Standard-Termin gebucht (am ${formatDateDDMMYYYY(bestehenderTermin.getStartTime())}). Erst wenn dieser Termin vorbei ist, kannst du einen neuen Standard-Termin vereinbaren.`
       };
     }
   }
 
-  const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG; [cite: 50]
-  const startTime = new Date(data.parsedDate); [cite: 50]
-  const [sh, sm] = slotTime.start.split(':'); [cite: 51]
-  startTime.setHours(sh, sm, 0, 0); [cite: 51]
+  const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
+  const startTime = new Date(data.parsedDate);
+  const [sh, sm] = slotTime.start.split(':');
+  startTime.setHours(sh, sm, 0, 0);
 
-  const endTime = new Date(startTime); [cite: 51]
-  const [eh, em] = slotTime.end.split(':'); [cite: 51]
-  endTime.setHours(eh, em, 0, 0); [cite: 52]
+  const endTime = new Date(startTime);
+  const [eh, em] = slotTime.end.split(':');
+  endTime.setHours(eh, em, 0, 0);
 
-  const conflicting = calendar.getEvents(startTime, endTime); [cite: 52]
-  if (conflicting.length > 0) { [cite: 52]
-    return { valid: false, error: 'Dieser Zeitraum (Slot) ist bereits von einem anderen Mitglied belegt.' }; [cite: 52, 53]
+  const conflicting = calendar.getEvents(startTime, endTime);
+  if (conflicting.length > 0) {
+    return { valid: false, error: 'Dieser Zeitraum (Slot) ist bereits von einem anderen Mitglied belegt.' };
   }
 
-  data.startTime = startTime; [cite: 53]
-  data.endTime = endTime; [cite: 53]
+  data.startTime = startTime;
+  data.endTime = endTime;
 
-  return { valid: true }; [cite: 53]
+  return { valid: true };
 }
 
 // Akzeptiert jetzt die bestehende Kalenderinstanz
 function createCalendarEvent(data, userId, calendar) {
   try {
-    const myPrefix = 'Boot:'; [cite: 54]
-    const title = data.type === 'joker' ? `JOKER - ${myPrefix} ${data.name}` : `${myPrefix} ${data.name}`; [cite: 55]
+    const myPrefix = 'Boot:';
+    const title = data.type === 'joker' ? `JOKER - ${myPrefix} ${data.name}` : `${myPrefix} ${data.name}`;
     const description = [
       `Name: ${data.name}`,
-      `Mitglieder-ID: ${data.memberId || 'Nicht hinterlegt'}`, [cite: 56, 57]
-      `Kontakt: ${userId}`, [cite: 57]
-      `Mobile: ${data.memberMobile || 'Nicht hinterlegt'}`, [cite: 57, 58]
-      `Slot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}`, [cite: 58]
-      `Typ: ${data.type.charAt(0).toUpperCase() + data.type.slice(1)}`, [cite: 58]
-      data.description ? `Beschreibung: ${data.description}` : '', [cite: 58, 59]
-      data.occasion ? `Anlass: ${data.occasion}` : '', [cite: 59, 60]
+      `Mitglieder-ID: ${data.memberId || 'Nicht hinterlegt'}`,
+      `Kontakt: ${userId}`,
+      `Mobile: ${data.memberMobile || 'Nicht hinterlegt'}`,
+      `Slot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}`,
+      `Typ: ${data.type.charAt(0).toUpperCase() + data.type.slice(1)}`,
+      data.description ? `Beschreibung: ${data.description}` : '',
+      data.occasion ? `Anlass: ${data.occasion}` : '',
       `Eingereicht per E-Mail`
-    ].filter(Boolean).join('\n'); [cite: 60]
-    const event = calendar.createEvent(title, data.startTime, data.endTime, { description: description }); [cite: 61]
-    event.setColor(data.type === 'joker' ? CalendarApp.EventColor.RED : CalendarApp.EventColor.BLUE); [cite: 61]
+    ].filter(Boolean).join('\n');
+    const event = calendar.createEvent(title, data.startTime, data.endTime, { description: description });
+    event.setColor(data.type === 'joker' ? CalendarApp.EventColor.RED : CalendarApp.EventColor.BLUE);
 
-    return event; [cite: 61]
+    return event;
   } catch (e) {
-    Logger.log('Fehler beim Erstellen des Kalendereintrags: ' + e); [cite: 62]
-    return null; [cite: 62]
+    Logger.log('Fehler beim Erstellen des Kalendereintrags: ' + e);
+    return null;
   }
 }
 
@@ -310,123 +314,123 @@ function createCalendarEvent(data, userId, calendar) {
 // =============================================================================
 
 function importExcelToSheets() {
-  const scriptProperties = PropertiesService.getScriptProperties(); [cite: 63]
-  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID; [cite: 64]
-  const adminEmail = CONFIG.ADMIN_EMAIL; [cite: 64]
-  if (!sheetId || !adminEmail) { [cite: 65]
-    Logger.log("❌ KRITISCHER FEHLER: Tabellen-ID ('SHEET_CONFIG_ID') oder Admin-E-Mail konnte nicht ermittelt werden."); [cite: 65]
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  const adminEmail = CONFIG.ADMIN_EMAIL;
+  if (!sheetId || !adminEmail) {
+    Logger.log("❌ KRITISCHER FEHLER: Tabellen-ID ('SHEET_CONFIG_ID') oder Admin-E-Mail konnte nicht ermittelt werden.");
     return;
   }
   
-  const searchQuery = `subject:"${CONFIG.EXCEL_SUBJECT}" is:unread`; [cite: 66]
-  const threads = GmailApp.search(searchQuery); [cite: 66]
+  const searchQuery = `subject:"${CONFIG.EXCEL_SUBJECT}" is:unread`;
+  const threads = GmailApp.search(searchQuery);
   
-  Logger.log(`Prüfe Posteingang auf neue Excel-Listen... Gefunden: ${threads.length}`); [cite: 66]
-  const adminEmailLower = adminEmail.toLowerCase(); [cite: 67]
-  const targetLabel = GmailApp.getUserLabelByName(CONFIG.EXCEL_TARGET_LABEL) || createGmailLabelStructure(CONFIG.EXCEL_TARGET_LABEL); [cite: 67]
-  const errorLabel = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt'); [cite: 67]
+  Logger.log(`Prüfe Posteingang auf neue Excel-Listen... Gefunden: ${threads.length}`);
+  const adminEmailLower = adminEmail.toLowerCase();
+  const targetLabel = GmailApp.getUserLabelByName(CONFIG.EXCEL_TARGET_LABEL) || createGmailLabelStructure(CONFIG.EXCEL_TARGET_LABEL);
+  const errorLabel = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
   
   for (let i = 0; i < threads.length; i++) {
-    const thread = threads[i]; [cite: 68]
-    const messages = thread.getMessages(); [cite: 69]
+    const thread = threads[i];
+    const messages = thread.getMessages();
     let importErfolgreich = false;
-    
     for (let j = 0; j < messages.length; j++) {
-      const message = messages[j]; [cite: 69]
-      if (!message.isUnread()) continue; // Nur ungelesene Nachrichten der Konversation betrachten [cite: 70]
+      const message = messages[j];
+      if (!message.isUnread()) continue;
+      // Nur ungelesene Nachrichten der Konversation betrachten
 
       // Optimierung 4: Sofort auf gelesen setzen, um Timeouts abzufangen
       message.markRead();
-      const sender = message.getFrom().toLowerCase(); [cite: 70]
-      const subject = message.getSubject(); [cite: 71]
+      const sender = message.getFrom().toLowerCase();
+      const subject = message.getSubject();
       
-      if (subject !== CONFIG.EXCEL_SUBJECT) continue; [cite: 71]
+      if (subject !== CONFIG.EXCEL_SUBJECT) continue;
       
       // Berechtigungsprüfung via String-Vergleich
-      if (!sender.includes(adminEmailLower)) { [cite: 71]
-        Logger.log(`WARNUNG: E-Mail von unbefugtem Absender blockiert: ${sender}`); [cite: 71]
-        if (errorLabel) thread.addLabel(errorLabel); [cite: 72]
+      if (!sender.includes(adminEmailLower)) {
+        Logger.log(`WARNUNG: E-Mail von unbefugtem Absender blockiert: ${sender}`);
+        if (errorLabel) thread.addLabel(errorLabel);
         continue;
       }
       
-      const attachments = message.getAttachments(); [cite: 73]
+      const attachments = message.getAttachments();
       for (let k = 0; k < attachments.length; k++) {
-        const attachment = attachments[k]; [cite: 74]
+        const attachment = attachments[k];
         const isExcel = attachment.getContentType() === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || 
-                        attachment.getName().toLowerCase().endsWith(".xlsx"); [cite: 75]
+                        attachment.getName().toLowerCase().endsWith(".xlsx");
         
-        if (!isExcel) continue; [cite: 75]
+        if (!isExcel) continue;
 
-        Logger.log(`Verarbeite Excel-Anhang: ${attachment.getName()}`); [cite: 75]
-        const fileBlob = attachment.copyBlob(); [cite: 75]
-        let tempSheetFile = null; [cite: 76]
+        Logger.log(`Verarbeite Excel-Anhang: ${attachment.getName()}`);
+        const fileBlob = attachment.copyBlob();
+        let tempSheetFile = null;
         
         try {
           const resource = {
             title: "temp_mitgliederliste_import_" + new Date().getTime(),
             mimeType: MimeType.GOOGLE_SHEETS
-          }; [cite: 76]
+          };
           // Temporäres Google Sheet aus Excel-Blob erstellen
-          tempSheetFile = Drive.Files.create(resource, fileBlob); [cite: 77]
-          const tempSpreadsheet = SpreadsheetApp.openById(tempSheetFile.id); [cite: 78]
-          const tempSheet = tempSpreadsheet.getSheets()[0]; [cite: 78]
-          const tempLastRow = tempSheet.getLastRow(); [cite: 78]
-          const tempLastColumn = tempSheet.getLastColumn(); [cite: 78]
-          if (tempLastRow <= 1) { [cite: 79]
-            Logger.log(`⚠️ Excel-Datei ${attachment.getName()} enthält keine Datenzeilen.`); [cite: 79]
-            continue; [cite: 80]
+          tempSheetFile = Drive.Files.create(resource, fileBlob);
+          const tempSpreadsheet = SpreadsheetApp.openById(tempSheetFile.id);
+          const tempSheet = tempSpreadsheet.getSheets()[0];
+          const tempLastRow = tempSheet.getLastRow();
+          const tempLastColumn = tempSheet.getLastColumn();
+          if (tempLastRow <= 1) {
+            Logger.log(`⚠️ Excel-Datei ${attachment.getName()} enthält keine Datenzeilen.`);
+            continue;
           }
           
           // Daten im Speicher sichern
-          const newValues = tempSheet.getRange(2, 1, tempLastRow - 1, tempLastColumn).getValues(); [cite: 80]
+          const newValues = tempSheet.getRange(2, 1, tempLastRow - 1, tempLastColumn).getValues();
           // Zugriff auf Ziel-Tabelle erst JETZT, wenn Daten validiert sind
-          const targetSpreadsheet = SpreadsheetApp.openById(sheetId); [cite: 81]
-          const targetSheet = targetSpreadsheet.getSheets()[0]; [cite: 82]
-          const targetLastRow = targetSheet.getLastRow(); [cite: 82]
+          const targetSpreadsheet = SpreadsheetApp.openById(sheetId);
+          const targetSheet = targetSpreadsheet.getSheets()[0];
+          const targetLastRow = targetSheet.getLastRow();
           
           // Erst bestehende Daten löschen (Ab Zeile 3)
-          if (targetLastRow > 2) { [cite: 82]
-            targetSheet.getRange(3, 1, targetLastRow - 2, targetSheet.getLastColumn()).clearContent(); [cite: 82]
+          if (targetLastRow > 2) {
+            targetSheet.getRange(3, 1, targetLastRow - 2, targetSheet.getLastColumn()).clearContent();
           }
           
           // Neue Daten reinschreiben
-          targetSheet.getRange(3, 1, newValues.length, tempLastColumn).setValues(newValues); [cite: 83]
-          Logger.log(`✅ Mitgliederliste erfolgreich durch Excel-Mail aktualisiert (${newValues.length} Mitglieder).`); [cite: 84]
+          targetSheet.getRange(3, 1, newValues.length, tempLastColumn).setValues(newValues);
+          Logger.log(`✅ Mitgliederliste erfolgreich durch Excel-Mail aktualisiert (${newValues.length} Mitglieder).`);
           
-          importErfolgreich = true; [cite: 84]
-          break; // Schleife für Anhänge abbrechen, da Import erfolgreich [cite: 84, 85]
+          importErfolgreich = true;
+          break; // Schleife für Anhänge abbrechen, da Import erfolgreich
           
         } catch (e) {
-          Logger.log(`❌ Fehler beim Verarbeiten der Import-Datei: ${e.message}`); [cite: 85]
+          Logger.log(`❌ Fehler beim Verarbeiten der Import-Datei: ${e.message}`);
         } finally {
           // Optimierung 2: Sicheres Löschen gemäß Drive API v3 (Verwendung von DriveApp für Kompatibilität)
           if (tempSheetFile && tempSheetFile.id) {
             try { 
               DriveApp.getFileById(tempSheetFile.id).setTrashed(true);
             } catch(err) {
-              Logger.log(`Hinweis beim Aufräumen: Temp-Datei konnte nicht gelöscht werden: ${err.message}`); [cite: 87]
+              Logger.log(`Hinweis beim Aufräumen: Temp-Datei konnte nicht gelöscht werden: ${err.message}`);
             }
           }
         }
       }
-      if (importErfolgreich) break; [cite: 88]
+      if (importErfolgreich) break;
     }
     
     // E-Mail-Status finalisieren
-    if (importErfolgreich) { [cite: 90]
-      if (targetLabel) thread.addLabel(targetLabel); [cite: 90]
+    if (importErfolgreich) {
+      if (targetLabel) thread.addLabel(targetLabel);
     } else {
-      Logger.log(`⚠️ Thread [${thread.getFirstMessageSubject()}] wurde verarbeitet, konnte aber nicht erfolgreich importiert werden.`); [cite: 91]
-      if (errorLabel) thread.addLabel(errorLabel); [cite: 92]
+      Logger.log(`⚠️ Thread [${thread.getFirstMessageSubject()}] wurde verarbeitet, konnte aber nicht erfolgreich importiert werden.`);
+      if (errorLabel) thread.addLabel(errorLabel);
     }
   }
 
   // ─── KETTENREAKTION: TRACKING WIRD BEI JEDEM DURCHLAUF GESTARTET ──────────
-  if (typeof tracklistchanges === 'function') { [cite: 92]
-    Logger.log("🔎 Starte routinemässige Prüfung auf manuelle Änderungen (tracklistchanges)..."); [cite: 92]
-    tracklistchanges(); [cite: 93]
+  if (typeof tracklistchanges === 'function') {
+    Logger.log("🔎 Starte routinemässige Prüfung auf manuelle Änderungen (tracklistchanges)...");
+    tracklistchanges();
   } else {
-    Logger.log("Hinweis: Die Funktion tracklistchanges wurde nicht gefunden."); [cite: 93]
+    Logger.log("Hinweis: Die Funktion tracklistchanges wurde nicht gefunden.");
   }
 }
 
@@ -435,82 +439,82 @@ function importExcelToSheets() {
 // =============================================================================
 
 function tracklistchanges() {
-  Logger.log('=== STARTE MITGLIEDERLISTEN-TRACKING ==='); [cite: 94]
+  Logger.log('=== STARTE MITGLIEDERLISTEN-TRACKING ===');
   
-  const scriptProperties = PropertiesService.getScriptProperties(); [cite: 94]
+  const scriptProperties = PropertiesService.getScriptProperties();
   // Alle Properties in EINEM einzigen Netzwerkaufruf holen
-  const allProperties = scriptProperties.getProperties(); [cite: 95]
-  const sheetId = allProperties['SHEET_CONFIG_ID'] || CONFIG.SHEET_CONFIG_ID; [cite: 95]
-  const adminEmail = allProperties['ADMIN_EMAIL'] || CONFIG.ADMIN_EMAIL; [cite: 96]
+  const allProperties = scriptProperties.getProperties();
+  const sheetId = allProperties['SHEET_CONFIG_ID'] || CONFIG.SHEET_CONFIG_ID;
+  const adminEmail = allProperties['ADMIN_EMAIL'] || CONFIG.ADMIN_EMAIL;
 
-  if (!sheetId || !adminEmail) { [cite: 96]
-    Logger.log('❌ FEHLER: Weder SHEET_CONFIG_ID noch ADMIN_EMAIL konnten gefunden werden.'); [cite: 96]
-    return; [cite: 97]
+  if (!sheetId || !adminEmail) {
+    Logger.log('❌ FEHLER: Weder SHEET_CONFIG_ID noch ADMIN_EMAIL konnten gefunden werden.');
+    return;
   }
 
-  const lastSnapshotRaw = allProperties['MEMBER_LIST_SNAPSHOT']; [cite: 97]
-  const currentSnapshot = {}; [cite: 97]
+  const lastSnapshotRaw = allProperties['MEMBER_LIST_SNAPSHOT'];
+  const currentSnapshot = {};
 
   try {
-    const ss = SpreadsheetApp.openById(sheetId); [cite: 97]
-    const sheet = ss.getSheets()[0]; [cite: 98]
-    const lastRow = sheet.getLastRow(); [cite: 98]
+    const ss = SpreadsheetApp.openById(sheetId);
+    const sheet = ss.getSheets()[0];
+    const lastRow = sheet.getLastRow();
     
-    if (lastRow > 1) { [cite: 98]
-      const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues(); [cite: 98]
-      for (let i = 0; i < data.length; i++) { [cite: 99]
-        const id = data[i][0] ? data[i][0].toString().trim() : ''; [cite: 99, 100]
-        if (!id) continue; [cite: 100]
+    if (lastRow > 1) {
+      const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+      for (let i = 0; i < data.length; i++) {
+        const id = data[i][0] ? data[i][0].toString().trim() : '';
+        if (!id) continue;
         
         currentSnapshot[id] = {
-          vorname: data[i][1] ? data[i][1].toString().trim() : '', [cite: 100, 101]
-          nachname: data[i][2] ? data[i][2].toString().trim() : '', [cite: 101, 102]
-          email: data[i][3] ? data[i][3].toString().trim() : '', [cite: 102, 103]
-          mobile: data[i][4] ? data[i][4].toString().trim() : '' [cite: 103, 104]
+          vorname: data[i][1] ? data[i][1].toString().trim() : '',
+          nachname: data[i][2] ? data[i][2].toString().trim() : '',
+          email: data[i][3] ? data[i][3].toString().trim() : '',
+          mobile: data[i][4] ? data[i][4].toString().trim() : ''
         };
       }
     }
   } catch (e) {
-    Logger.log('❌ Fehler beim Einlesen der Tabelle für Tracking: ' + e.message); [cite: 105]
-    return; [cite: 106]
+    Logger.log('❌ Fehler beim Einlesen der Tabelle für Tracking: ' + e.message);
+    return;
   }
 
-  if (!lastSnapshotRaw) { [cite: 106]
-    Logger.log('Kein alter Schnappschuss vorhanden. Erstelle initialen Datenstand...'); [cite: 106]
-    scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot)); [cite: 106]
-    Logger.log('=== TRACKING BEENDET (Initialer Lauf) ==='); [cite: 107]
+  if (!lastSnapshotRaw) {
+    Logger.log('Kein alter Schnappschuss vorhanden. Erstelle initialen Datenstand...');
+    scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
+    Logger.log('=== TRACKING BEENDET (Initialer Lauf) ===');
     
-    if (typeof checkAndWelcomeNewMembers === 'function') { [cite: 107]
-      checkAndWelcomeNewMembers(); [cite: 107]
+    if (typeof checkAndWelcomeNewMembers === 'function') {
+      checkAndWelcomeNewMembers();
     }
-    return; [cite: 108]
+    return;
   }
 
-  const lastSnapshot = JSON.parse(lastSnapshotRaw); [cite: 108]
-  const addedMembers = []; [cite: 108]
-  const updatedMembers = []; [cite: 108]
+  const lastSnapshot = JSON.parse(lastSnapshotRaw);
+  const addedMembers = [];
+  const updatedMembers = [];
 
   // OPTIMIERUNG 1: Abgleich und direktes Erkennen von Updates & Neuzugängen
-  for (const id in currentSnapshot) { [cite: 109]
-    const current = currentSnapshot[id]; [cite: 109]
-    const last = lastSnapshot[id]; [cite: 110]
-    current.id = id; [cite: 110]
+  for (const id in currentSnapshot) {
+    const current = currentSnapshot[id];
+    const last = lastSnapshot[id];
+    current.id = id;
 
-    if (!last) { [cite: 110]
-      addedMembers.push(current); [cite: 110]
+    if (!last) {
+      addedMembers.push(current);
     } else {
-      const changedFields = []; [cite: 111]
-      const textDetails = []; [cite: 111]
+      const changedFields = [];
+      const textDetails = [];
       // Felder dynamisch prüfen statt 4x hartem "if"
-      const fieldsToTrack = { vorname: 'Vorname', nachname: 'Nachname', email: 'E-Mail', mobile: 'Mobil' }; [cite: 112]
-      for (const [field, label] of Object.entries(fieldsToTrack)) { [cite: 113]
-        if (current[field] !== last[field]) { [cite: 113]
-          changedFields.push(field); [cite: 113]
-          textDetails.push(`${label}: ${last[field] || '-'} -> ${current[field] || '-'}`); [cite: 114]
+      const fieldsToTrack = { vorname: 'Vorname', nachname: 'Nachname', email: 'E-Mail', mobile: 'Mobil' };
+      for (const [field, label] of Object.entries(fieldsToTrack)) {
+        if (current[field] !== last[field]) {
+          changedFields.push(field);
+          textDetails.push(`${label}: ${last[field] || '-'} -> ${current[field] || '-'}`);
         }
       }
 
-      if (changedFields.length > 0) { [cite: 114]
+      if (changedFields.length > 0) {
         updatedMembers.push({
           id: id,
           old: last,
@@ -522,75 +526,75 @@ function tracklistchanges() {
       
       // OPTIMIERUNG 2: Gefundene IDs aus dem alten Snapshot löschen.
       // Alles was am Ende übrig bleibt, wurde aus der Tabelle gelöscht!
-      delete lastSnapshot[id]; [cite: 116]
+      delete lastSnapshot[id];
     }
   }
 
   // Was jetzt noch im alten Snapshot ist, wurde entfernt
-  const removedMembers = Object.keys(lastSnapshot).map(id => { [cite: 117]
-    const removed = lastSnapshot[id]; [cite: 117]
-    removed.id = id; [cite: 117]
-    return removed; [cite: 117]
+  const removedMembers = Object.keys(lastSnapshot).map(id => {
+    const removed = lastSnapshot[id];
+    removed.id = id;
+    return removed;
   });
 
-  if (addedMembers.length > 0 || removedMembers.length > 0 || updatedMembers.length > 0) { [cite: 118]
-    Logger.log(`Änderungen erkannt! Neu: ${addedMembers.length}, Gelöscht: ${removedMembers.length}, Geändert: ${updatedMembers.length}`); [cite: 118]
-    sendChangeReportMail(adminEmail, addedMembers, removedMembers, updatedMembers); [cite: 119]
+  if (addedMembers.length > 0 || removedMembers.length > 0 || updatedMembers.length > 0) {
+    Logger.log(`Änderungen erkannt! Neu: ${addedMembers.length}, Gelöscht: ${removedMembers.length}, Geändert: ${updatedMembers.length}`);
+    sendChangeReportMail(adminEmail, addedMembers, removedMembers, updatedMembers);
     
-    if (!CONFIG.TRACKING_TEST_MODUS_AKTIV) { [cite: 119]
-      scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot)); [cite: 119]
-      Logger.log('Der neue Schnappschuss wurde erfolgreich gespeichert.'); [cite: 119]
+    if (!CONFIG.TRACKING_TEST_MODUS_AKTIV) {
+      scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
+      Logger.log('Der neue Schnappschuss wurde erfolgreich gespeichert.');
     } else {
-      Logger.log('⚠️ HINWEIS: Im Tracking-Testmodus wird der alte Schnappschuss NICHT überschrieben.'); [cite: 120]
+      Logger.log('⚠️ HINWEIS: Im Tracking-Testmodus wird der alte Schnappschuss NICHT überschrieben.');
     }
   } else {
-    Logger.log('Keine Änderungen an der Mitgliederliste festgestellt.'); [cite: 121]
+    Logger.log('Keine Änderungen an der Mitgliederliste festgestellt.');
   }
 
   // KETTENREAKTION: Am Ende des Trackings direkt das Onboarding triggern
-  if (typeof checkAndWelcomeNewMembers === 'function') { [cite: 122]
-    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder (checkAndWelcomeNewMembers)..."); [cite: 122]
-    checkAndWelcomeNewMembers(); [cite: 123]
+  if (typeof checkAndWelcomeNewMembers === 'function') {
+    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder (checkAndWelcomeNewMembers)...");
+    checkAndWelcomeNewMembers();
   }
 
-  Logger.log('=== TRACKING BEENDET ==='); [cite: 123]
+  Logger.log('=== TRACKING BEENDET ===');
 }
 
 function sendChangeReportMail(adminEmail, added, removed, updated) {
-  let subject = `✅ Änderungsbericht: Mitgliederliste BC1890`; [cite: 123]
-  if (CONFIG.TRACKING_TEST_MODUS_AKTIV) subject = `[TEST] ` + subject; [cite: 124]
+  let subject = `✅ Änderungsbericht: Mitgliederliste BC1890`;
+  if (CONFIG.TRACKING_TEST_MODUS_AKTIV) subject = `[TEST] ` + subject;
 
-  const tableStyle = 'width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; font-size: 14px;'; [cite: 124, 125]
-  const thStyle = 'background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 10px; text-align: left; color: #334155; font-weight: bold;'; [cite: 125]
-  const tdStyle = 'border: 1px solid #e2e8f0; padding: 10px; vertical-align: top; color: #475569;'; [cite: 126]
+  const tableStyle = 'width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; font-size: 14px;';
+  const thStyle = 'background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 10px; text-align: left; color: #334155; font-weight: bold;';
+  const tdStyle = 'border: 1px solid #e2e8f0; padding: 10px; vertical-align: top; color: #475569;';
   
   // OPTIMIERUNG 3 / 5: Konsequent HTML-Push-Array statt träger String-Verkettung im inneren Loop
   const html = [
-    '<div style="font-family: sans-serif; color: #333; max-width: 750px; line-height: 1.5;">', [cite: 127]
-    '<h2 style="color: #1a365d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 20px;">Bericht: Änderungen an der Mitgliederliste</h2>', [cite: 127]
-    '<p>Hallo Vorstand,<br>das automatisierte System hat Änderungen in der Mitglieder-Tabelle festgestellt. Nachfolgend findest du alle Details:</p>' [cite: 127, 128]
+    '<div style="font-family: sans-serif; color: #333; max-width: 750px; line-height: 1.5;">',
+    '<h2 style="color: #1a365d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 20px;">Bericht: Änderungen an der Mitgliederliste</h2>',
+    '<p>Hallo Vorstand,<br>das automatisierte System hat Änderungen in der Mitglieder-Tabelle festgestellt. Nachfolgend findest du alle Details:</p>'
   ];
 
-  if (added.length > 0) { [cite: 128]
-    html.push(`<h3 style="color: #2f855a; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #c6f6d5; padding-bottom: 4px;">➕ Neu hinzugefügte Mitglieder (${added.length})</h3>`, [cite: 128]
-              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`); [cite: 128]
+  if (added.length > 0) {
+    html.push(`<h3 style="color: #2f855a; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #c6f6d5; padding-bottom: 4px;">➕ Neu hinzugefügte Mitglieder (${added.length})</h3>`,
+              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`);
     added.forEach(m => { 
-      html.push(`<tr><td style="${tdStyle}"><code>${m.id || ''}</code></td><td style="${tdStyle}"><b>${m.vorname} ${m.nachname}</b></td><td style="${tdStyle}">${m.email}</td><td style="${tdStyle}">${m.mobile || '-'}</td></tr>`); [cite: 129]
+      html.push(`<tr><td style="${tdStyle}"><code>${m.id || ''}</code></td><td style="${tdStyle}"><b>${m.vorname} ${m.nachname}</b></td><td style="${tdStyle}">${m.email}</td><td style="${tdStyle}">${m.mobile || '-'}</td></tr>`);
     });
-    html.push('</table>'); [cite: 130]
+    html.push('</table>');
   }
 
-  if (removed.length > 0) { [cite: 130]
-    html.push(`<h3 style="color: #9b2c2c; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #fed7d7; padding-bottom: 4px;">➖ Entfernte Mitglieder (${removed.length})</h3>`, [cite: 130]
-              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`); [cite: 130]
+  if (removed.length > 0) {
+    html.push(`<h3 style="color: #9b2c2c; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #fed7d7; padding-bottom: 4px;">➖ Entfernte Mitglieder (${removed.length})</h3>`,
+              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`);
     removed.forEach(m => { 
-      html.push(`<tr style="background-color: #fafafa;"><td style="${tdStyle} color: #94a3b8;"><code>${m.id || ''}</code></td><td style="${tdStyle} color: #94a3b8;">${m.vorname} ${m.nachname}</td><td style="${tdStyle} color: #94a3b8;">${m.email}</td><td style="${tdStyle} color: #94a3b8;">${m.mobile || '-'}</td></tr>`); [cite: 131]
+      html.push(`<tr style="background-color: #fafafa;"><td style="${tdStyle} color: #94a3b8;"><code>${m.id || ''}</code></td><td style="${tdStyle} color: #94a3b8;">${m.vorname} ${m.nachname}</td><td style="${tdStyle} color: #94a3b8;">${m.email}</td><td style="${tdStyle} color: #94a3b8;">${m.mobile || '-'}</td></tr>`);
     });
-    html.push('</table>'); [cite: 132]
+    html.push('</table>');
   }
 
-  if (updated.length > 0) { [cite: 132]
-    html.push(`<h3 style="color: #dd6b20; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #feebc8; padding-bottom: 4px;">⚠️ Aktualisierte Mitgliedsdaten (${updated.length})</h3>`); [cite: 132]
+  if (updated.length > 0) {
+    html.push(`<h3 style="color: #dd6b20; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #feebc8; padding-bottom: 4px;">⚠️ Aktualisierte Mitgliedsdaten (${updated.length})</h3>`);
     updated.forEach(m => {
       // Optimierung 5: Komplett auf Array-Pushes umgestellt, um String-Verkettungen zu vermeiden
       html.push('<div style="margin-bottom: 25px; border-left: 4px solid #dd6b20; padding-left: 12px;">');
@@ -605,26 +609,24 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
         { label: 'E-Mail', key: 'email' },
         { label: 'Mobile', key: 'mobile' }
       ];
-
       rows.forEach(r => {
-        const isChanged = m.changedFields.includes(r.key); [cite: 134]
-        const cellStyle = isChanged ? 'background-color: #fffaf0; font-weight: bold; color: #c05621;' : ''; [cite: 135]
-        html.push(`<tr><td style="${tdStyle} ${cellStyle}">${r.label}</td><td style="${tdStyle} ${cellStyle}">${m.old[r.key] || '-'}</td><td style="${tdStyle} ${cellStyle}">${m.current[r.key] || '-'}</td></tr>`); [cite: 136]
+        const isChanged = m.changedFields.includes(r.key);
+        const cellStyle = isChanged ? 'background-color: #fffaf0; font-weight: bold; color: #c05621;' : '';
+        html.push(`<tr><td style="${tdStyle} ${cellStyle}">${r.label}</td><td style="${tdStyle} ${cellStyle}">${m.old[r.key] || '-'}</td><td style="${tdStyle} ${cellStyle}">${m.current[r.key] || '-'}</td></tr>`);
       });
-
-      html.push('</table></div>'); [cite: 136]
+      html.push('</table></div>');
     });
   }
 
-  html.push(`<hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 40px;"><p style="font-size: 12px; color: #a0aec0;">Generiert am: ${new Date().toLocaleString('de-DE')}</p></div>`); [cite: 137]
-  const plainBody = `Änderungsbericht Mitgliederliste BC1890\n\n` + [cite: 138]
-    (added.length > 0 ? `Neu (${added.length}):\n` + added.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') + [cite: 138]
-    (removed.length > 0 ? `Entfernt (${removed.length}):\n` + removed.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') + [cite: 138]
-    (updated.length > 0 ? `Geändert (${updated.length}):\n` + updated.map(m => `- ID: ${m.id}, Änderungen: ${m.textDetails.join(', ')}`).join('\n') + `\n` : ''); [cite: 138]
+  html.push(`<hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 40px;"><p style="font-size: 12px; color: #a0aec0;">Generiert am: ${new Date().toLocaleString('de-DE')}</p></div>`);
+  const plainBody = `Änderungsbericht Mitgliederliste BC1890\n\n` +
+    (added.length > 0 ? `Neu (${added.length}):\n` + added.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') +
+    (removed.length > 0 ? `Entfernt (${removed.length}):\n` + removed.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') +
+    (updated.length > 0 ? `Geändert (${updated.length}):\n` + updated.map(m => `- ID: ${m.id}, Änderungen: ${m.textDetails.join(', ')}`).join('\n') + `\n` : '');
   try {
-    GmailApp.sendEmail(adminEmail, subject, plainBody, { htmlBody: html.join('') }); [cite: 139]
+    GmailApp.sendEmail(adminEmail, subject, plainBody, { htmlBody: html.join('') });
   } catch (err) {
-    Logger.log('❌ Fehler beim Senden des Änderungsberichts: ' + err.message); [cite: 140]
+    Logger.log('❌ Fehler beim Senden des Änderungsberichts: ' + err.message);
   }
 }
 
@@ -633,51 +635,53 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
 // =============================================================================
 
 function checkAndWelcomeNewMembers() {
-  const modusText = CONFIG.TEST_MODUS_AKTIV ? '⚠️ TESTMODUS (AKTIV)' : '🚀 LIVE-BETRIEB'; [cite: 141, 142]
-  Logger.log(`=== STARTE PRÜFUNG AUF NEUE MITGLIEDER [Modus: ${modusText}] ===`); [cite: 142]
+  const modusText = CONFIG.TEST_MODUS_AKTIV ?
+    '⚠️ TESTMODUS (AKTIV)' : '🚀 LIVE-BETRIEB';
+  Logger.log(`=== STARTE PRÜFUNG AUF NEUE MITGLIEDER [Modus: ${modusText}] ===`);
   
-  const scriptProperties = PropertiesService.getScriptProperties(); [cite: 142]
-  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID; [cite: 143]
-  const adminEmail = CONFIG.ADMIN_EMAIL; [cite: 143]
-  if (!sheetId || !adminEmail) { [cite: 144]
-    Logger.log('❌ KRITISCHER FEHLER: Tabellen-ID oder Admin-E-Mail konnte nicht ermittelt werden.'); [cite: 144]
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  const adminEmail = CONFIG.ADMIN_EMAIL;
+  if (!sheetId || !adminEmail) {
+    Logger.log('❌ KRITISCHER FEHLER: Tabellen-ID oder Admin-E-Mail konnte nicht ermittelt werden.');
     return;
   }
 
-  const welcomedMembersRaw = scriptProperties.getProperty('WELCOMED_MEMBER_IDS'); [cite: 145]
-  const welcomedMemberIds = welcomedMembersRaw ? JSON.parse(welcomedMembersRaw) : []; [cite: 145]
-  const isInitialRun = welcomedMemberIds.length === 0; [cite: 145]
-  if (isInitialRun) { [cite: 145]
-    Logger.log('Erster Durchlauf erkannt. Bestehende Mitglieder werden erfasst, ohne E-Mails zu senden.'); [cite: 146]
+  const welcomedMembersRaw = scriptProperties.getProperty('WELCOMED_MEMBER_IDS');
+  const welcomedMemberIds = welcomedMembersRaw ?
+    JSON.parse(welcomedMembersRaw) : [];
+  const isInitialRun = welcomedMemberIds.length === 0;
+  if (isInitialRun) {
+    Logger.log('Erster Durchlauf erkannt. Bestehende Mitglieder werden erfasst, ohne E-Mails zu senden.');
   }
 
   try {
-    const ss = SpreadsheetApp.openById(sheetId); [cite: 147]
-    const sheet = ss.getSheets()[0];  [cite: 147]
+    const ss = SpreadsheetApp.openById(sheetId);
+    const sheet = ss.getSheets()[0]; 
     if (!sheet) return;
-    const lastRow = sheet.getLastRow(); [cite: 148]
-    if (lastRow <= 1) { [cite: 148]
-      Logger.log('Keine Mitgliederdaten in der Tabelle gefunden.'); [cite: 148]
-      scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([])); [cite: 149]
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      Logger.log('Keine Mitgliederdaten in der Tabelle gefunden.');
+      scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([]));
       return;
     } 
     
-    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues(); [cite: 149]
+    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
     // 1. SCHLEIFEN-OPTIMIERUNG: IDs sammeln und Daten validieren in EINEM Durchlauf
-    const currentTableIds = new Set(); [cite: 150]
-    const validRows = []; [cite: 151]
+    const currentTableIds = new Set();
+    const validRows = [];
 
     for (let i = 0; i < dataRange.length; i++) {
-      const row = dataRange[i]; [cite: 151]
-      const memberId = row[0] ? row[0].toString().trim() : ''; [cite: 152]
-      const email = row[3] ? row[3].toString().trim() : ''; [cite: 152]
-      if (memberId) { [cite: 153]
-        currentTableIds.add(memberId); [cite: 153]
-        if (email) { [cite: 154]
+      const row = dataRange[i];
+      const memberId = row[0] ? row[0].toString().trim() : '';
+      const email = row[3] ? row[3].toString().trim() : '';
+      if (memberId) {
+        currentTableIds.add(memberId);
+        if (email) {
           validRows.push({
             id: memberId,
-            vorname: row[1] ? row[1].toString().trim() : '', [cite: 154]
-            nachname: row[2] ? row[2].toString().trim() : '', [cite: 154]
+            vorname: row[1] ? row[1].toString().trim() : '',
+            nachname: row[2] ? row[2].toString().trim() : '',
             email: email
           });
         }
@@ -685,101 +689,101 @@ function checkAndWelcomeNewMembers() {
     }
 
     // 2. BEREINIGUNG: Schneller Abgleich dank Set.has()
-    const cleanedWelcomedIds = welcomedMemberIds.filter(id => currentTableIds.has(id)); [cite: 155]
-    const removedCount = welcomedMemberIds.length - cleanedWelcomedIds.length; [cite: 156]
-    if (removedCount > 0) { [cite: 156]
-      Logger.log(`🧹 BEREINIGUNG: ${removedCount} gelöschte(s) Mitglied(er) aus dem Skript-Gedächtnis entfernt.`); [cite: 156]
+    const cleanedWelcomedIds = welcomedMemberIds.filter(id => currentTableIds.has(id));
+    const removedCount = welcomedMemberIds.length - cleanedWelcomedIds.length;
+    if (removedCount > 0) {
+      Logger.log(`🧹 BEREINIGUNG: ${removedCount} gelöschte(s) Mitglied(er) aus dem Skript-Gedächtnis entfernt.`);
     }
 
     // 3. I/O OPTIMIERUNG: PDF einmalig VOR der Schleife holen (spart massiv API-Aufrufe)
-    let attachmentBlob = null; [cite: 157]
-    const fileId = scriptProperties.getProperty('PDF_FILE_ID'); [cite: 158]
-    if (!fileId) { [cite: 158]
-      throw new Error('Keine gültige Google Drive File ID konfiguriert.'); [cite: 158]
+    let attachmentBlob = null;
+    const fileId = scriptProperties.getProperty('PDF_FILE_ID');
+    if (!fileId) {
+      throw new Error('Keine gültige Google Drive File ID konfiguriert.');
     }
     try {
-      attachmentBlob = DriveApp.getFileById(fileId).getBlob(); [cite: 159]
+      attachmentBlob = DriveApp.getFileById(fileId).getBlob();
     } catch (e) {
-      Logger.log(`⚠️ Fehler beim Laden des PDF-Anhangs: ${e.message}. Mails werden ohne Anhang gesendet.`); [cite: 160]
+      Logger.log(`⚠️ Fehler beim Laden des PDF-Anhangs: ${e.message}. Mails werden ohne Anhang gesendet.`);
     }
 
     // 4. VERARBEITUNG: Willkommens-Mails senden
-    const welcomedSet = new Set(cleanedWelcomedIds); [cite: 161]
-    let mailsSentCount = 0; [cite: 162]
+    const welcomedSet = new Set(cleanedWelcomedIds);
+    let mailsSentCount = 0;
 
     for (const member of validRows) {
-      if (!welcomedSet.has(member.id)) { [cite: 162]
-        if (!isInitialRun) { [cite: 162]
-          sendWelcomeMail(member.email, member.vorname, member.nachname, adminEmail, attachmentBlob); [cite: 162]
-          mailsSentCount++; [cite: 163]
+      if (!welcomedSet.has(member.id)) {
+        if (!isInitialRun) {
+          sendWelcomeMail(member.email, member.vorname, member.nachname, adminEmail, attachmentBlob);
+          mailsSentCount++;
         }
-        welcomedSet.add(member.id); [cite: 163]
+        welcomedSet.add(member.id);
       }
     }
 
     // Zurück in Array konvertieren für Speicherung
-    scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet])); [cite: 164]
-    Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`); [cite: 165]
+    scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet]));
+    Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
   } catch (e) {
-    Logger.log('Fehler im Onboarding-Script: ' + e.message); [cite: 165]
+    Logger.log('Fehler im Onboarding-Script: ' + e.message);
   }
 }
 
 // Erwartet jetzt den fertigen Blob, um DriveApp-Aufrufe in der Schleife zu verhindern
 function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob) {
-  const name = vorname || 'Mitglied'; [cite: 166, 167]
+  const name = vorname || 'Mitglied';
   
-  let finalReceiver = toEmail; [cite: 167]
-  let finalCc = adminEmail;  [cite: 167]
-  let subject = 'Herzlich willkommen beim Bootsclub 1890! ⛵'; [cite: 167]
-  let testNoticeHtml = ''; [cite: 168]
-  let testNoticePlain = ''; [cite: 168]
+  let finalReceiver = toEmail;
+  let finalCc = adminEmail;
+  let subject = 'Herzlich willkommen beim Bootsclub 1890! ⛵';
+  let testNoticeHtml = '';
+  let testNoticePlain = '';
 
   if (CONFIG.TEST_MODUS_AKTIV) {
-    finalReceiver = adminEmail;  [cite: 168]
-    finalCc = ''; [cite: 168]
-    subject = `[TEST-MODUS für: ${toEmail}] Herzlich Willkommen beim Bootsclub 1890! ⛵`; [cite: 169]
+    finalReceiver = adminEmail;
+    finalCc = '';
+    subject = `[TEST-MODUS für: ${toEmail}] Herzlich Willkommen beim Bootsclub 1890! ⛵`;
     testNoticeHtml = `
       <div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 20px; color: #856404; font-family: sans-serif; border-radius: 4px;">
         ⚠️ <b>SYSTEM-HINWEIS (TEST-MODUS):</b> Diese E-Mail wurde automatisch abgefangen und an den Vorstand umgeleitet.<br>
         <b>Geplanter Empfänger im Live-Betrieb:</b> ${vorname} ${nachname} (&lt;${toEmail}&gt;)
       </div>
-    `; [cite: 170]
-    testNoticePlain = `[⚠️ TEST-MODUS - Geplanter Empfänger im Live-Betrieb: ${vorname} ${nachname} (${toEmail})]\n\n`; [cite: 171]
+    `;
+    testNoticePlain = `[⚠️ TEST-MODUS - Geplanter Empfänger im Live-Betrieb: ${vorname} ${nachname} (${toEmail})]\n\n`;
   }
   
   const htmlBody = `
     ${testNoticeHtml}
     Hallo ${name},<br><br>
     Herzlich Willkommen im <b>Bootsclub 1890</b>!<br><br>
-    Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.<br><br> [cite: 173]
-    Ab sofort kannst du Bootstermine direkt per E-Mail reservieren. [cite: 173]
+    Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.<br><br>
+    Ab sofort kannst du Bootstermine direkt per E-Mail reservieren.
     <br>
-    <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br> [cite: 174]
+    <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Sende Reservierungen an: <b>${adminEmail}</b>. [cite: 174]
-    Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br> [cite: 175]
-    • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text (bis max. 24 Stunden vor dem Termin).<br><br> [cite: 175]
-    Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br> [cite: 175]
-    Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br> [cite: 175]
-    Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br> [cite: 175]
-    <b>Dein Vorstand</b><br> [cite: 175]
+    • Sende Reservierungen an: <b>${adminEmail}</b>.
+    Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br>
+    • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text (bis max. 24 Stunden vor dem Termin).<br><br>
+    Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br>
+    Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
+    Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br>
+    <b>Dein Vorstand</b><br>
   `;
-  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${adminEmail}.\n\nAllzeit gute Fahrt!\nDein Vorstand`; [cite: 176]
+  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${adminEmail}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
   try {
     const options = {
       cc: finalCc, 
       replyTo: adminEmail,
       htmlBody: htmlBody
-    }; [cite: 177]
-    if (attachmentBlob) { [cite: 178]
-      options.attachments = [attachmentBlob]; [cite: 178]
+    };
+    if (attachmentBlob) {
+      options.attachments = [attachmentBlob];
     }
 
-    GmailApp.sendEmail(finalReceiver, subject, plainBody, options); [cite: 178]
+    GmailApp.sendEmail(finalReceiver, subject, plainBody, options);
   } catch (error) {
-    Logger.log(`❌ FEHLER beim Senden der Willkommens-Mail: ${error.message}`); [cite: 179]
+    Logger.log(`❌ FEHLER beim Senden der Willkommens-Mail: ${error.message}`);
   }
 }
 
@@ -805,12 +809,10 @@ function ausfuehrenKalenderSynchronisierung() {
     // --- DYNAMISCHE SPALTENSUCHE ---
     // Holt die gesamte Kopfzeile (Zeile 1), um die Spaltenindizes zu ermitteln
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    
     // Sucht die Position der E-Mail-Spalte anhand der Beschriftung
     const emailColIndex = headers.findIndex(h => h.toString().trim().toLowerCase() === 'e-mail' || h.toString().trim().toLowerCase() === 'email');
     // Optional: Sucht auch die Status-Spalte, um inaktive Nutzer auszuschließen
     const statusColIndex = headers.findIndex(h => h.toString().trim().toLowerCase() === 'status');
-
     if (emailColIndex === -1) {
       Logger.log('❌ FEHLER: Spalte "E-Mail" oder "Email" konnte in der Kopfzeile (Zeile 1) nicht gefunden werden.');
       return;
@@ -826,7 +828,6 @@ function ausfuehrenKalenderSynchronisierung() {
     for (let i = 0; i < dataRange.length; i++) {
       const email = dataRange[i][emailColIndex] ? dataRange[i][emailColIndex].toString().trim().toLowerCase() : '';
       const status = statusColIndex !== -1 && dataRange[i][statusColIndex] ? dataRange[i][statusColIndex].toString().trim().toLowerCase() : '';
-      
       // Nur Adressen hinzufügen, die ein '@' enthalten und NICHT den Status 'inaktiv' besitzen
       if (email && email.includes('@') && status !== 'inaktiv') {
         sheetEmailsSet.add(email);
@@ -834,7 +835,6 @@ function ausfuehrenKalenderSynchronisierung() {
     }
 
     Logger.log(`📋 Anzahl gültiger (aktiver) Mitglieder aus der Tabelle: ${sheetEmailsSet.size}`);
-
     // 2. SCHRITT: Aktuelle Kalender-Berechtigungen auslesen
     const calendar = CalendarApp.getCalendarById(kalenderId);
     if (!calendar) {
@@ -844,7 +844,6 @@ function ausfuehrenKalenderSynchronisierung() {
 
     const aclList = calendar.getUsersWithAccess();
     const currentAclEmails = aclList.map(user => user.toString().trim().toLowerCase());
-    
     Logger.log(`📅 Anzahl Personen mit Kalender-Zugriff aktuell: ${currentAclEmails.length}`);
 
     // 3. SCHRITT: KALENDER-ABGLEICH (Hinzufügen & Entfernen)
@@ -863,7 +862,6 @@ function ausfuehrenKalenderSynchronisierung() {
         }
       }
     });
-
     // B) Alte/Inaktive Mitglieder entfernen, die nicht mehr in der erlaubten Liste stehen
     currentAclEmails.forEach(email => {
       // Den Admin/Besitzer niemals aus dem eigenen Kalender entfernen!
@@ -878,7 +876,6 @@ function ausfuehrenKalenderSynchronisierung() {
         }
       }
     });
-
     Logger.log('✅ Kalender-Synchronisierung erfolgreich abgeschlossen!');
 
   } catch (error) {
@@ -891,156 +888,156 @@ function ausfuehrenKalenderSynchronisierung() {
 // =============================================================================
 
 function executeCancellation(data, userId, thread, message) {
-  const memberData = getAuthorizedUserData(userId); [cite: 201]
+  const memberData = getAuthorizedUserData(userId);
   
-  if (!memberData) { [cite: 201]
-    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, { replyTo: CONFIG.ADMIN_EMAIL }); [cite: 201]
+  if (!memberData) {
+    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, { replyTo: CONFIG.ADMIN_EMAIL });
     return false;
   }
   
-  data.name = memberData.name; [cite: 202]
-  const jetzt = new Date();  [cite: 203]
-  const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG; [cite: 203]
-  const terminStartZeit = new Date(data.parsedDate); [cite: 203]
-  const [sh, sm] = slotTime.start.split(':'); [cite: 204]
-  terminStartZeit.setHours(sh, sm, 0, 0);  [cite: 204]
+  data.name = memberData.name;
+  const jetzt = new Date();  
+  const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
+  const terminStartZeit = new Date(data.parsedDate); 
+  const [sh, sm] = slotTime.start.split(':');
+  terminStartZeit.setHours(sh, sm, 0, 0);  
 
   // 24 Stunden Frist berechnen
-  const stornierungsFrist = new Date(terminStartZeit.getTime() - (24 * 60 * 60 * 1000)); [cite: 204]
-  if (jetzt > stornierungsFrist) { [cite: 205]
-    let fehlerGrund = terminStartZeit < jetzt ? 'Der Termin liegt in der Vergangenheit.' : `Die Frist für eine automatische Stornierung (24h vor Beginn) ist abgelaufen.`; [cite: 205, 206]
-    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `Hallo ${data.name},\n\n❌ Grund: ${fehlerGrund}`, { replyTo: CONFIG.ADMIN_EMAIL }); [cite: 207]
+  const stornierungsFrist = new Date(terminStartZeit.getTime() - (24 * 60 * 60 * 1000));
+  if (jetzt > stornierungsFrist) {
+    let fehlerGrund = terminStartZeit < jetzt ? 'Der Termin liegt in der Vergangenheit.' : `Die Frist für eine automatische Stornierung (24h vor Beginn) ist abgelaufen.`;
+    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `Hallo ${data.name},\n\n❌ Grund: ${fehlerGrund}`, { replyTo: CONFIG.ADMIN_EMAIL });
     return false; 
   }
 
-  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar(); [cite: 208]
-  const terminEndZeit = new Date(terminStartZeit); [cite: 209]
-  const [eh, em] = slotTime.end.split(':'); [cite: 209]
-  terminEndZeit.setHours(eh, em, 0, 0); [cite: 209]
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+  const terminEndZeit = new Date(terminStartZeit); 
+  const [eh, em] = slotTime.end.split(':');
+  terminEndZeit.setHours(eh, em, 0, 0); 
 
-  const events = calendar.getEvents(terminStartZeit, terminEndZeit); [cite: 209]
-  const userEvent = events.find(e => (e.getDescription() || '').includes(`Mitglieder-ID: ${memberData.id}`)); [cite: 210]
+  const events = calendar.getEvents(terminStartZeit, terminEndZeit);
+  const userEvent = events.find(e => (e.getDescription() || '').includes(`Mitglieder-ID: ${memberData.id}`));
 
-  if (userEvent) { [cite: 210]
-    if (userEvent.getTitle().toUpperCase().includes('JOKER')) { [cite: 210]
-      GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, { replyTo: CONFIG.ADMIN_EMAIL }); [cite: 210]
+  if (userEvent) {
+    if (userEvent.getTitle().toUpperCase().includes('JOKER')) {
+      GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, { replyTo: CONFIG.ADMIN_EMAIL });
       return false;
     }
 
-    userEvent.deleteEvent();  [cite: 211]
+    userEvent.deleteEvent();
     // OPTIMIERUNG 1: Tippfehler im Betreff korrigiert ("Bestätigung" statt "BestBTigung")
-    GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL }); [cite: 211]
+    GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
     return true;
   } else {
-    GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, { replyTo: CONFIG.ADMIN_EMAIL }); [cite: 213]
+    GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, { replyTo: CONFIG.ADMIN_EMAIL });
     return false;
   }
 }
 
 function sendConfirmationEmail(to, event, data, thread) {
-  const subject = 'Buchung bestätigt: ' + event.getTitle(); [cite: 214]
-  const htmlBody = `Hallo ${data.name},<br><br>dein Termin wurde erfolgreich eingetragen:<br><br>📅 <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>🕒 <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br><br>Dein Vorstand`; [cite: 215]
-  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen.`; [cite: 216]
+  const subject = 'Buchung bestätigt: ' + event.getTitle();
+  const htmlBody = `Hallo ${data.name},<br><br>dein Termin wurde erfolgreich eingetragen:<br><br>📅 <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>🕒 <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br><br>Dein Vorstand`;
+  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen.`;
 
   try {
-    GmailApp.sendEmail(to, subject, plainBody, { replyTo: CONFIG.ADMIN_EMAIL, htmlBody: htmlBody }); [cite: 216]
+    GmailApp.sendEmail(to, subject, plainBody, { replyTo: CONFIG.ADMIN_EMAIL, htmlBody: htmlBody });
   } catch (error) {
-    if (thread) thread.createDraftReply(plainBody, { htmlBody: htmlBody }); [cite: 217]
+    if (thread) thread.createDraftReply(plainBody, { htmlBody: htmlBody });
   }
 }
 
 function sendRejectionEmail(to, reason, thread) {
-  const subject = 'Buchung abgelehnt'; [cite: 218]
-  const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\n❌ Grund: ${reason}`; [cite: 219]
+  const subject = 'Buchung abgelehnt';
+  const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\n❌ Grund: ${reason}`;
   try {
-    GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL }); [cite: 220]
+    GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
   } catch (error) {
-    if (thread) thread.createDraftReply(`Ablehnungsgrund: ${reason}`); [cite: 221]
+    if (thread) thread.createDraftReply(`Ablehnungsgrund: ${reason}`);
   }
 }
 
 // Globaler Cache zur Vermeidung mehrfacher Tabellen-I/O-Aufrufe während desselben Skript-Laufs
-let memberDataCache_ = null; [cite: 222]
+let memberDataCache_ = null;
 
 function getAuthorizedUserData(email) {
-  const searchEmail = email.trim().toLowerCase(); [cite: 223]
+  const searchEmail = email.trim().toLowerCase();
   
   // OPTIMIERUNG 2: Cache-Abfrage spart wertvolle Millisekunden bei Schleifendurchläufen
-  if (memberDataCache_ && memberDataCache_[searchEmail]) { [cite: 223]
-    return memberDataCache_[searchEmail]; [cite: 224]
+  if (memberDataCache_ && memberDataCache_[searchEmail]) {
+    return memberDataCache_[searchEmail];
   }
 
-  const scriptProperties = PropertiesService.getScriptProperties(); [cite: 224]
-  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID; [cite: 224]
-  let ss, sheet; [cite: 224]
-  try { if (sheetId) { ss = SpreadsheetApp.openById(sheetId); sheet = ss.getSheets()[0]; } } catch (e) {} [cite: 225, 226]
+  const scriptProperties = PropertiesService.getScriptProperties();
+  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  let ss, sheet;
+  try { if (sheetId) { ss = SpreadsheetApp.openById(sheetId); sheet = ss.getSheets()[0]; } } catch (e) {}
 
   // Automatisches Erstellen der Tabelle falls gelöscht oder nicht vorhanden
-  if (!ss || !sheet || sheet.getLastRow() === 0) { [cite: 226]
+  if (!ss || !sheet || sheet.getLastRow() === 0) {
     try {
-      const folderName = "Google Kalender Reservierungssystem"; [cite: 226]
-      let targetFolder = DriveApp.getFoldersByName(folderName).hasNext() ? DriveApp.getFoldersByName(folderName).next() : DriveApp.createFolder(folderName); [cite: 227]
+      const folderName = "Google Kalender Reservierungssystem";
+      let targetFolder = DriveApp.getFoldersByName(folderName).hasNext() ? DriveApp.getFoldersByName(folderName).next() : DriveApp.createFolder(folderName);
 
-      ss = SpreadsheetApp.create('Mitgliederliste'); [cite: 227]
-      sheet = ss.getSheets()[0]; [cite: 227]
-      sheetId = ss.getId(); [cite: 227]
-      const file = DriveApp.getFileById(sheetId); [cite: 228]
-      targetFolder.addFile(file); [cite: 228]
-      DriveApp.getRootFolder().removeFile(file); [cite: 228]
+      ss = SpreadsheetApp.create('Mitgliederliste');
+      sheet = ss.getSheets()[0];
+      sheetId = ss.getId();
+      const file = DriveApp.getFileById(sheetId);
+      targetFolder.addFile(file);
+      DriveApp.getRootFolder().removeFile(file);
 
-      sheet.appendRow(["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile"]); [cite: 228]
-      sheet.getRange(1, 1, 1, 5).setFontWeight("bold"); [cite: 228]
-      sheet.appendRow(["BJB-001", "Vorstand", "Boot", CONFIG.ADMIN_EMAIL, "Nicht hinterlegt"]); [cite: 229]
-      sheet.autoResizeColumns(1, 5); [cite: 229]
+      sheet.appendRow(["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile"]);
+      sheet.getRange(1, 1, 1, 5).setFontWeight("bold");
+      sheet.appendRow(["BJB-001", "Vorstand", "Boot", CONFIG.ADMIN_EMAIL, "Nicht hinterlegt"]);
+      sheet.autoResizeColumns(1, 5);
 
-      scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId); [cite: 229]
-    } catch (err) { return null; [cite: 229]
+      scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
+    } catch (err) { return null;
     }
   }
 
   try {
-    const lastRow = sheet.getLastRow(); [cite: 230]
-    if (lastRow <= 1) return null; [cite: 230]
-    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues(); [cite: 231]
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return null;
+    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
     
     // Cache initialisieren
-    memberDataCache_ = {}; [cite: 231]
-    let foundUserData = null; [cite: 232]
+    memberDataCache_ = {};
+    let foundUserData = null;
 
     for (let i = 0; i < dataRange.length; i++) {
-      const currentEmail = dataRange[i][3] ? dataRange[i][3].toString().trim().toLowerCase() : ''; [cite: 232, 233]
-      if (!currentEmail) continue; [cite: 233]
+      const currentEmail = dataRange[i][3] ? dataRange[i][3].toString().trim().toLowerCase() : '';
+      if (!currentEmail) continue;
 
       const userObj = {
-        id: dataRange[i][0] ? dataRange[i][0].toString().trim() : 'Keine ID',  [cite: 233, 234]
-        name: `${dataRange[i][1] || ''} ${dataRange[i][2] || ''}`.trim() || currentEmail,    [cite: 234, 235]
-        mobile: dataRange[i][4] ? dataRange[i][4].toString().trim() : 'Nicht hinterlegt' [cite: 235, 236]
+        id: dataRange[i][0] ? dataRange[i][0].toString().trim() : 'Keine ID',  
+        name: `${dataRange[i][1] || ''} ${dataRange[i][2] || ''}`.trim() || currentEmail,    
+        mobile: dataRange[i][4] ? dataRange[i][4].toString().trim() : 'Nicht hinterlegt'
       };
       // Alle Mitglieder in den Cache schreiben für zukünftige Suchen im selben Lauf
-      memberDataCache_[currentEmail] = userObj; [cite: 237]
-      if (currentEmail === searchEmail) { [cite: 238]
-        foundUserData = userObj; [cite: 239]
+      memberDataCache_[currentEmail] = userObj;
+      if (currentEmail === searchEmail) {
+        foundUserData = userObj;
       }
     }
-    return foundUserData; [cite: 239]
-  } catch (e) { return null; [cite: 240]
+    return foundUserData;
+  } catch (e) { return null;
   }
 }
 
 function getCurrentSeasonStart() {
-  return new Date(new Date().getFullYear(), 0, 1); [cite: 240]
+  return new Date(new Date().getFullYear(), 0, 1);
 }
 
 function createGmailLabelStructure(fullLabelPath) {
-  const parts = fullLabelPath.split('/'); [cite: 240]
-  let currentPath = ''; [cite: 241]
-  let finalLabel = null; [cite: 241]
+  const parts = fullLabelPath.split('/');
+  let currentPath = '';
+  let finalLabel = null;
   for (let i = 0; i < parts.length; i++) {
-    currentPath = currentPath ? currentPath + '/' + parts[i] : parts[i]; [cite: 241, 242]
-    let label = GmailApp.getUserLabelByName(currentPath) || GmailApp.createLabel(currentPath); [cite: 242]
-    if (i === parts.length - 1) finalLabel = label; [cite: 243]
+    currentPath = currentPath ? currentPath + '/' + parts[i] : parts[i];
+    let label = GmailApp.getUserLabelByName(currentPath) || GmailApp.createLabel(currentPath);
+    if (i === parts.length - 1) finalLabel = label;
   }
-  return finalLabel; [cite: 244]
+  return finalLabel;
 }
 
 // =============================================================================
@@ -1048,132 +1045,131 @@ function createGmailLabelStructure(fullLabelPath) {
 // =============================================================================
 
 function sendDailyReservationReminders() {
-  Logger.log("=== STARTE TÄGLICHE ERINNERUNGS-PRÜFUNG ==="); [cite: 244]
-  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar(); [cite: 245]
+  Logger.log("=== STARTE TÄGLICHE ERINNERUNGS-PRÜFUNG ===");
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
     
-  if (!calendar) { [cite: 245]
-    Logger.log("❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden."); [cite: 245]
-    return;  [cite: 246]
+  if (!calendar) {
+    Logger.log("❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden.");
+    return;  
   }
 
   // OPTIMIERUNG 3: Exakte "Morgen"-Zeitspanne berechnen
-  const tomorrowStart = new Date(); [cite: 246]
-  tomorrowStart.setDate(tomorrowStart.getDate() + 1); [cite: 246]
-  tomorrowStart.setHours(0, 0, 0, 0); [cite: 247]
+  const tomorrowStart = new Date();
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  tomorrowStart.setHours(0, 0, 0, 0);
   
-  const tomorrowEnd = new Date(tomorrowStart); [cite: 247]
-  tomorrowEnd.setHours(23, 59, 59, 999); [cite: 247]
+  const tomorrowEnd = new Date(tomorrowStart);
+  tomorrowEnd.setHours(23, 59, 59, 999);
   
-  const events = calendar.getEvents(tomorrowStart, tomorrowEnd); [cite: 247]
+  const events = calendar.getEvents(tomorrowStart, tomorrowEnd);
   events.forEach(event => {
-    const desc = event.getDescription() || ""; [cite: 248]
-    const emailMatch = desc.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/); [cite: 248]
-    if (emailMatch && emailMatch[1]) { [cite: 248]
-      const slotName = event.getStartTime().getHours() === 8 ? "Vormittag (08:00 - 14:00)" : "Nachmittag (14:00 - 20:00)"; [cite: 248]
-      let body = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n📅 Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n⏱️ Slot: ${slotName}\n\nViel Spass mit dem Boot!`; [cite: 248]
-      GmailApp.sendEmail(emailMatch[1].trim(), `Erinnerung: Deine Boot Buchung für morgen!`, body); [cite: 248]
+    const desc = event.getDescription() || "";
+    const emailMatch = desc.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+    if (emailMatch && emailMatch[1]) {
+      const slotName = event.getStartTime().getHours() === 8 ? "Vormittag (08:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
+      let body = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n📅 Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n⏱️ Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
+      GmailApp.sendEmail(emailMatch[1].trim(), `Erinnerung: Deine Boot Buchung für morgen!`, body);
     }
   });
 }
 
 function ensureInitialSheet() {
-  const scriptProperties = PropertiesService.getScriptProperties(); [cite: 249]
-  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID; [cite: 249]
-  if (!sheetId) { [cite: 250]
-    Logger.log("📂 Initialisiere Google Sheet und Ordnerstruktur für den Erststart..."); [cite: 250]
-    getAuthorizedUserData(CONFIG.ADMIN_EMAIL); [cite: 250]
-    Logger.log("✅ Google Sheet wurde erfolgreich im Google Drive angelegt."); [cite: 251]
+  const scriptProperties = PropertiesService.getScriptProperties();
+  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  if (!sheetId) {
+    Logger.log("📂 Initialisiere Google Sheet und Ordnerstruktur für den Erststart...");
+    getAuthorizedUserData(CONFIG.ADMIN_EMAIL);
+    Logger.log("✅ Google Sheet wurde erfolgreich im Google Drive angelegt.");
   } else {
-    Logger.log("ℹ️ Google Sheet existiert bereits. ID: " + sheetId); [cite: 251]
+    Logger.log("ℹ️ Google Sheet existiert bereits. ID: " + sheetId);
   }
 }
 
 function fetchAndSyncAnleitungPDF() {
-  Logger.log("🔄 Synchronisiere PDF-Anleitung von GitHub..."); [cite: 252]
-  const scriptProperties = PropertiesService.getScriptProperties(); [cite: 252]
-  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID; [cite: 252]
-  if (!sheetId) return; [cite: 253]
+  Logger.log("🔄 Synchronisiere PDF-Anleitung von GitHub...");
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  if (!sheetId) return;
   
-  const sheetFile = DriveApp.getFileById(sheetId); [cite: 253]
-  const parents = sheetFile.getParents(); [cite: 253]
-  const targetFolder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder(); [cite: 253]
-  let targetUrl = PDF_SOURCE_URL; [cite: 254]
+  const sheetFile = DriveApp.getFileById(sheetId);
+  const parents = sheetFile.getParents();
+  const targetFolder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  let targetUrl = PDF_SOURCE_URL;
   
   // OPTIMIERUNG 4: Korrekte Übersetzung in die GitHub-RAW-Domain zur Vermeidung von PDF-Korruption
-  if (targetUrl.includes('github.com')) { [cite: 254]
-    targetUrl = targetUrl [cite: 254]
-      .replace('github.com', 'raw.githubusercontent.com') [cite: 255]
-      .replace('/blob/', '/'); [cite: 255]
+  if (targetUrl.includes('github.com')) {
+    targetUrl = targetUrl
+      .replace('github.com', 'raw.githubusercontent.com')
+      .replace('/blob/', '/');
   }
   
-  Logger.log("📥 Rufe URL ab: " + targetUrl); [cite: 255]
-  const response = UrlFetchApp.fetch(targetUrl, { muteHttpExceptions: true }); [cite: 255]
-  if (response.getResponseCode() !== 200) { [cite: 256]
-    Logger.log("❌ Fehler beim Abrufen der PDF von GitHub: " + response.getResponseCode()); [cite: 256]
-    return; [cite: 257]
+  Logger.log("📥 Rufe URL ab: " + targetUrl);
+  const response = UrlFetchApp.fetch(targetUrl, { muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) {
+    Logger.log("❌ Fehler beim Abrufen der PDF von GitHub: " + response.getResponseCode());
+    return;
   }
   
-  const pdfBlob = response.getBlob().setContentType("application/pdf").setName("Anleitung Bootsreservation.pdf"); [cite: 257]
-  const fileName = "Anleitung Bootsreservation.pdf"; [cite: 257]
-  const files = targetFolder.getFilesByName(fileName); [cite: 257]
-  let localFile = files.hasNext() ? files.next() : null; [cite: 258]
+  const pdfBlob = response.getBlob().setContentType("application/pdf").setName("Anleitung Bootsreservation.pdf");
+  const fileName = "Anleitung Bootsreservation.pdf";
+  const files = targetFolder.getFilesByName(fileName);
+  let localFile = files.hasNext() ? files.next() : null;
   
-  if (localFile) { [cite: 258]
-    const headers = response.getHeaders(); [cite: 258]
-    const remoteLastModifiedStr = headers["Last-Modified"] || headers["last-modified"]; [cite: 259]
-    let shouldUpdate = true; [cite: 259]
-    if (remoteLastModifiedStr) { [cite: 260]
-      const remoteDate = new Date(remoteLastModifiedStr); [cite: 260]
-      const localDate = new Date(localFile.getLastUpdated()); [cite: 260]
-      if (remoteDate <= localDate) { [cite: 261]
-        shouldUpdate = false; [cite: 261]
-        Logger.log("ℹ️ Lokale PDF ist auf dem neuesten Stand."); [cite: 262]
+  if (localFile) {
+    const headers = response.getHeaders();
+    const remoteLastModifiedStr = headers["Last-Modified"] || headers["last-modified"];
+    let shouldUpdate = true;
+    if (remoteLastModifiedStr) {
+      const remoteDate = new Date(remoteLastModifiedStr);
+      const localDate = new Date(localFile.getLastUpdated());
+      if (remoteDate <= localDate) {
+        shouldUpdate = false;
+        Logger.log("ℹ️ Lokale PDF ist auf dem neuesten Stand.");
       }
     }
     
-    if (shouldUpdate) { [cite: 262]
-      Logger.log("🔄 Lokale PDF veraltet. Ersetze Datei..."); [cite: 262]
-      localFile.setTrashed(true); [cite: 263]
-      const newFile = targetFolder.createFile(pdfBlob); [cite: 263]
-      scriptProperties.setProperty('PDF_FILE_ID', newFile.getId()); [cite: 263]
+    if (shouldUpdate) {
+      Logger.log("🔄 Lokale PDF veraltet. Ersetze Datei...");
+      localFile.setTrashed(true);
+      const newFile = targetFolder.createFile(pdfBlob);
+      scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
     } else {
-      scriptProperties.setProperty('PDF_FILE_ID', localFile.getId()); [cite: 263]
+      scriptProperties.setProperty('PDF_FILE_ID', localFile.getId());
     }
     
   } else {
-    Logger.log("📥 PDF existiert lokal nicht. Erstelle neue Datei..."); [cite: 264]
-    const newFile = targetFolder.createFile(pdfBlob); [cite: 265]
-    scriptProperties.setProperty('PDF_FILE_ID', newFile.getId()); [cite: 265]
+    Logger.log("📥 PDF existiert lokal nicht. Erstelle neue Datei...");
+    const newFile = targetFolder.createFile(pdfBlob);
+    scriptProperties.setProperty('PDF_FILE_ID', newFile.getId());
   }
 }
 
 function setupTriggers() {
-  Logger.log('========================================================================'); [cite: 265]
-  Logger.log('🚀 STARTE CENTRAL SYSTEM SETUP...'); [cite: 265]
-  Logger.log('========================================================================'); [cite: 265]
+  Logger.log('========================================================================');
+  Logger.log('🚀 STARTE CENTRAL SYSTEM SETUP...');
+  Logger.log('========================================================================');
 
-  ensureInitialSheet(); [cite: 265]
+  ensureInitialSheet();
   try {
-    fetchAndSyncAnleitungPDF(); [cite: 266]
+    fetchAndSyncAnleitungPDF();
   } catch(pdfError) {
-    Logger.log("⚠️ Warnung beim PDF-Sync: " + pdfError.toString()); [cite: 266]
+    Logger.log("⚠️ Warnung beim PDF-Sync: " + pdfError.toString());
   }
 
-  const existingTriggers = ScriptApp.getProjectTriggers(); [cite: 267]
-  existingTriggers.forEach(t => ScriptApp.deleteTrigger(t)); [cite: 267]
+  const existingTriggers = ScriptApp.getProjectTriggers();
+  existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
 
   // Trigger-Definitionen
-  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create(); [cite: 267]
-  ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create(); [cite: 267]
-  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create(); [cite: 267]
+  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
+  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
   
-  ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => { [cite: 268]
-    if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label); [cite: 268]
+  ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
+    if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
   });
-  
-  Logger.log('========================================================================'); [cite: 268]
-  Logger.log('🎉 INTEGRIERTES GESAMT-SETUP ERFOLGREICH!'); [cite: 268]
-  Logger.log('========================================================================'); [cite: 268]
+  Logger.log('========================================================================');
+  Logger.log('🎉 INTEGRIERTES GESAMT-SETUP ERFOLGREICH!');
+  Logger.log('========================================================================');
 }
 
 // =============================================================================
@@ -1181,19 +1177,19 @@ function setupTriggers() {
 // =============================================================================
 
 function setEarliestBookingDate() {
-  const zielDatum = '01.04.' + new Date().getFullYear();  [cite: 269]
-  PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', zielDatum); [cite: 269]
-  Logger.log(`Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`); [cite: 270]
+  const zielDatum = '01.04.' + new Date().getFullYear();
+  PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', zielDatum);
+  Logger.log(`Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`);
 }
 
 function resetWelcomeDatabase() {
-  PropertiesService.getScriptProperties().deleteProperty('WELCOMED_MEMBER_IDS'); [cite: 270]
-  Logger.log('Onboarding-Datenbank zurückgesetzt.'); [cite: 270]
+  PropertiesService.getScriptProperties().deleteProperty('WELCOMED_MEMBER_IDS');
+  Logger.log('Onboarding-Datenbank zurückgesetzt.');
 }
 
 function resetTrackingSnapshot() {
-  PropertiesService.getScriptProperties().deleteProperty('MEMBER_LIST_SNAPSHOT'); [cite: 270]
-  Logger.log('Tracking-Schnappschuss wurde erfolgreich gelöscht.'); [cite: 271]
+  PropertiesService.getScriptProperties().deleteProperty('MEMBER_LIST_SNAPSHOT');
+  Logger.log('Tracking-Schnappschuss wurde erfolgreich gelöscht.');
 }
 
 // Helper zum Parsen europäischer Daten (falls im restlichen Skript benötigt)
