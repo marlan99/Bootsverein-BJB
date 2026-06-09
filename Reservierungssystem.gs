@@ -509,8 +509,8 @@ function tracklistchanges() {
     scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
     Logger.log('=== TRACKING BEENDET (Initialer Lauf) ===');
     
-    if (typeof checkAnd === 'function') {
-      checkAnd();
+    if (typeof checkAndWelcomeNewMembers === 'function') {
+      checkAndWelcomeNewMembers();
     }
     return;
   }
@@ -577,9 +577,9 @@ function tracklistchanges() {
   }
 
   // KETTENREAKTION: Am Ende des Trackings direkt das Onboarding triggern
-  if (typeof checkAnd === 'function') {
-    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder (checkAnd)...");
-    checkAnd();
+  if (typeof checkAndWelcomeNewMembers === 'function') {
+    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder ...");
+    checkAndWelcomeNewMembers();
   }
 
   Logger.log('=== TRACKING BEENDET ===');
@@ -1340,10 +1340,10 @@ function setupTriggers() {
     if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
   });
 
-  // NEU: Führt das Onboarding direkt am Schluss des Setups aus, um WELCOMED_MEMBER_IDS zu initialisieren
+  // Führt das Onboarding direkt am Schluss des Setups aus, um WELCOMED_MEMBER_IDS zu initialisieren
   if (typeof checkAndWelcomeNewMembers === 'function') {
     try {
-      Logger.log('🚀 Führe Onboarding-Initialisierung (checkAndWelcomeNewMembers) aus...');
+      Logger.log('🚀 Führe Onboarding-Initialisierung aus...');
       checkAndWelcomeNewMembers();
       Logger.log('✅ Onboarding-Infrastruktur wurde erfolgreich initialisiert.');
     } catch(onboardingError) {
