@@ -1339,6 +1339,20 @@ function setupTriggers() {
   [CONFIG.GMAIL_LABEL, 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
   });
+
+  // NEU: Führt das Onboarding direkt am Schluss des Setups aus, um WELCOMED_MEMBER_IDS zu initialisieren
+  if (typeof checkAndWelcomeNewMembers === 'function') {
+    try {
+      Logger.log('🚀 Führe Onboarding-Initialisierung (checkAndWelcomeNewMembers) aus...');
+      checkAndWelcomeNewMembers();
+      Logger.log('✅ Onboarding-Infrastruktur wurde erfolgreich initialisiert.');
+    } catch(onboardingError) {
+      Logger.log("⚠️ Warnung bei der Onboarding-Initialisierung: " + onboardingError.toString());
+    }
+  } else {
+    Logger.log("⚠️ Fehler: Die Funktion checkAndWelcomeNewMembers wurde im Skript nicht gefunden.");
+  }
+
   Logger.log('========================================================================');
   Logger.log('🎉 INTEGRIERTES GESAMT-SETUP ERFOLGREICH!');
   Logger.log('========================================================================');
