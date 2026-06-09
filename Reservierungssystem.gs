@@ -751,7 +751,7 @@ function checkAndWelcomeNewMembers() {
     Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
     // 🔥 JETZT MITGLIEDERBERECHTIGUNG AUSFÜHREN:
-    if (authorizationChanged && !isInitialRun) {
+    if (mailsSentCount > 0 && !isInitialRun) {
       Logger.log("⚡ Änderungen an Mitgliedern erkannt. Starte Kalender-Berechtigungen SOFORT...");
       ausfuehrenKalenderSynchronisierung();
     } else {
