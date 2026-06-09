@@ -7,126 +7,101 @@
 const PDF_SOURCE_URL = 'https://github.com/marlan99/Bootsverein-BJB/blob/main/Anleitung%20Bootsreservation.pdf';
 
 const CONFIG = {
-  // <--- KALENDER & ADMIN EINSTELLUNGEN --->
   CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
   GMAIL_LABEL: 'Reservierung/Neu',               
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
-
-  // <--- ONBOARDING & EXCEL-IMPORT EINSTELLUNGEN --->
-  // true  = Willkommens-Mails werden abgefangen und NUR an den Vorstand gesendet
-  // false = Mails gehen direkt an die neuen Mitglieder und der Vorstand im CC (Normalbetrieb).
   TEST_MODUS_AKTIV: false, 
-  // Einstellungen für den automatischen Excel-Listenimport
   EXCEL_SUBJECT: 'Mitgliederliste',
   EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
-
-  // <--- MITGLIEDER-TRACKING EINSTELLUNGEN --->
-  // true  = Der Änderungsbericht wird gesendet, aber kein neuer Schnappschuss gespeichert.
-  // false = Der Bericht wird gesendet und der Schnappschuss aktualisiert (Normalbetrieb).
   TRACKING_TEST_MODUS_AKTIV: false
 };
 
 // =============================================================================
-// 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN
+// 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN (OPTIMIERT)
 // =============================================================================
 
 function processReservationEmails() {
-  let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
-  if (!labelNeu) {
-    labelNeu = createGmailLabelStructure(CONFIG.GMAIL_LABEL);
+  let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL) || createGmailLabelStructure(CONFIG.GMAIL_LABEL);
+
+  // OPTIMIERUNG 1: Kombinierte Suchanfrage spart API-Quota und verhindert Doppelverarbeitung
+  const emailThreads = GmailApp.search('in:inbox (subject:"Reservierung" OR subject:"Stornierung")');
+  Logger.log(`Gefundene relevante Threads im Posteingang: ${emailThreads.length}`);
+  
+  // OPTIMIERUNG 2: Kalender-Instanz EINMALIG holen und wiederverwenden
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+  if (!calendar) {
+    Logger.log('❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden.');
+    return;
   }
 
-  const reservationThreads = GmailApp.search('in:inbox subject:"Reservierung"');
-  Logger.log(`Gefundene neue Reservierungen im Posteingang: ${reservationThreads.length}`);
-  
-  reservationThreads.forEach(thread => {
+  emailThreads.forEach(thread => {
     const messages = thread.getMessages();
     messages.forEach(message => {
       if (message.isUnread()) {
         thread.addLabel(labelNeu);
-        processSingleEmail(message, thread);
-      }
-    });
-  });
-
-  const cancellationThreads = GmailApp.search('in:inbox subject:"Stornierung"');
-  Logger.log(`Gefundene neue Stornierungen im Posteingang: ${cancellationThreads.length}`);
-  
-  cancellationThreads.forEach(thread => {
-    const messages = thread.getMessages();
-    messages.forEach(message => {
-      if (message.isUnread()) {
-        thread.addLabel(labelNeu);
-        processSingleEmail(message, thread);
+        processSingleEmail(message, thread, calendar);
       }
     });
   });
 }
 
-function processSingleEmail(message, thread) {
+function processSingleEmail(message, thread, calendar) {
   const sender = message.getFrom().match(/[\w.-]+@[\w.-]+/)?.[0] || 'unbekannt';
   const subject = message.getSubject().toLowerCase();
   const body = message.getPlainBody();
 
   const data = parseEmailTemplate(body);
-  const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
+  const labelNeu = GmailApp.getUserLabelByName(CONFIG.CONFIG?.GMAIL_LABEL || CONFIG.GMAIL_LABEL);
   
-  if (!data.valid) {
-    sendRejectionEmail(sender, data.error, thread);
+  // Zentralisierte Funktion für die Label-Verschiebung im Fehler-/Erfolgsfall
+  const finalizeThread = (targetLabelName) => {
     message.markRead();
-    
-    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
-    thread.addLabel(labelAbgelehnt);
+    const targetLabel = GmailApp.getUserLabelByName(targetLabelName) || GmailApp.createLabel(targetLabelName);
+    thread.addLabel(targetLabel);
     if (labelNeu) thread.removeLabel(labelNeu);
     thread.moveToArchive();
+  };
+
+  if (!data.valid) {
+    sendRejectionEmail(sender, data.error, thread);
+    finalizeThread('Reservierung/Abgelehnt');
     return;
   }
 
   const userId = sender;
 
+  // Erleichterte Erkennung von Stornierungen
   if (subject.includes('stornierung') || subject.includes('absage')) {
-    executeCancellation(data, userId, thread, message);
+    executeCancellation(data, userId, thread, message); 
     thread.moveToArchive();
     return;
   }
 
-  const validation = validateRequest(data, userId, sender);
+  // Kalender wird hier direkt übergeben
+  const validation = validateRequest(data, userId, sender, calendar);
   
   if (!validation.valid) {
     sendRejectionEmail(sender, validation.error, thread);
-    message.markRead();
-    
-    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
-    thread.addLabel(labelAbgelehnt);
-    if (labelNeu) thread.removeLabel(labelNeu);
-    thread.moveToArchive();
+    finalizeThread('Reservierung/Abgelehnt');
     return;
   }
 
-  const event = createCalendarEvent(data, userId);
+  // Kalender wird hier direkt übergeben
+  const event = createCalendarEvent(data, userId, calendar);
   if (event) {
     sendConfirmationEmail(sender, event, data, thread);
-    message.markRead();
-    
-    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') || GmailApp.createLabel('Reservierung/Erledigt');
-    thread.addLabel(labelErledigt);
-    if (labelNeu) thread.removeLabel(labelNeu);
-    thread.moveToArchive(); 
+    finalizeThread('Reservierung/Erledigt');
   } else {
-    sendRejectionEmail(sender, 'Fehler beim Erstellen des Termins.', thread);
-    message.markRead();
-    
-    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
-    thread.addLabel(labelAbgelehnt);
-    if (labelNeu) thread.removeLabel(labelNeu);
-    thread.moveToArchive();
+    sendRejectionEmail(sender, 'Fehler beim Erstellen des Termins im Google Kalender.', thread);
+    finalizeThread('Reservierung/Abgelehnt');
   }
 }
 
 function parseEmailTemplate(body) {
-  const lines = body.split('\n').map(l => l.trim());
+  // OPTIMIERUNG 3: Regex-Split fängt Windows-Zeilenumbrüche (\r\n) sauber ab
+  const lines = body.split(/\r?\n/).map(l => l.trim());
   const data = { valid: false };
 
   const fields = {
@@ -139,14 +114,14 @@ function parseEmailTemplate(body) {
 
   lines.forEach(line => {
     for (const [key, prop] of Object.entries(fields)) {
-      if (line.startsWith(key + ':')) {
+      if (line.toLowerCase().startsWith(key.toLowerCase() + ':')) { // Tolerant gegenüber Groß-/Kleinschreibung beim Key
         data[prop] = line.substring(key.length + 1).trim();
       }
     }
   });
 
   if (!data.date || !data.slot) {
-    data.error = 'Fehlende Pflichtfelder: Datum, Slot';
+    data.error = 'Fehlende Pflichtfelder im Text: "Datum:" oder "Slot:" konnten nicht extrahiert werden.';
     return data;
   }
 
@@ -161,18 +136,14 @@ function parseEmailTemplate(body) {
 
   data.slot = data.slot.toLowerCase();
   if (!['vormittag', 'nachmittag'].includes(data.slot)) {
-    data.error = 'Slot muss "Vormittag" oder "Nachmittag" sein.';
+    data.error = 'Der angegebene Slot ist ungültig. Erlaubt ist: "Vormittag" oder "Nachmittag".';
     return data;
   }
 
-  if (!data.type) {
-    data.type = 'standard';
-  } else {
-    data.type = data.type.toLowerCase();
-  }
+  data.type = data.type ? data.type.toLowerCase() : 'standard';
 
   if (!['standard', 'joker'].includes(data.type)) {
-    data.error = 'Typ kann nur "Standard" oder "Joker" sein.';
+    data.error = 'Der Typ kann nur "Standard" oder "Joker" sein.';
     return data;
   }
 
@@ -180,60 +151,8 @@ function parseEmailTemplate(body) {
   return data;
 }
 
-function parseEuropeanDate(dateStr) {
-  if (!dateStr) return null;
-  dateStr = dateStr.trim();
-  
-  const textMonthRegex = /^(\d{1,2})\.\s*([a-zA-ZäÄöÖüÜß]+)\s*(\d{4})$/;
-  const textMatch = dateStr.match(textMonthRegex);
-  if (textMatch) {
-    const day = parseInt(textMatch[1], 10);
-    const monthName = textMatch[2].toLowerCase();
-    const year = parseInt(textMatch[3], 10);
-    
-    const months = {
-      'januar': 0, 'jan': 0, 'februar': 1, 'feb': 1, 'märz': 2, 'mrz': 2, 'maerz': 2,
-      'april': 3, 'apr': 3, 'mai': 4, 'juni': 5, 'jun': 5, 'juli': 6, 'jul': 6,
-      'august': 7, 'aug': 7, 'september': 8, 'sep': 8, 'oktober': 9, 'okt': 9,
-      'november': 10, 'nov': 10, 'dezember': 11, 'dez': 11
-    };
-    
-    if (months[monthName] !== undefined) {
-      return new Date(year, months[monthName], day, 12, 0, 0);
-    }
-  }
-  
-  const numericRegex = /^(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})$/;
-  const numMatch = dateStr.match(numericRegex);
-  if (numMatch) {
-    const day = parseInt(numMatch[1], 10);
-    const month = parseInt(numMatch[2], 10) - 1;
-    const year = parseInt(numMatch[3], 10);
-    
-    const parsedDate = new Date(year, month, day, 12, 0, 0);
-    
-    if (parsedDate.getFullYear() === year && parsedDate.getMonth() === month && parsedDate.getDate() === day) {
-      return parsedDate;
-    }
-  }
-  
-  const fallbackDate = new Date(dateStr);
-  if (!isNaN(fallbackDate.getTime())) {
-    return fallbackDate;
-  }
-  
-  return null;
-}
-
-function formatDateDDMMYYYY(date) {
-  if (!date || isNaN(date.getTime())) return 'Ungültiges Datum';
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}.${month}.${year}`;
-}
-
-function validateRequest(data, userId, sender) {
+// Akzeptiert jetzt die bestehende Kalenderinstanz
+function validateRequest(data, userId, sender, calendar) {
   const scriptProperties = PropertiesService.getScriptProperties();
   const memberData = getAuthorizedUserData(userId);
   
@@ -251,12 +170,10 @@ function validateRequest(data, userId, sender) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ─── PRÜFUNG DES FRÜHESTMÖGLICHEN STARTDATUMS (ZUKUNFTSSICHER) ──────
+  // Prüfen des frühestmöglichen Startdatums
   const startDatumRaw = scriptProperties.getProperty('EARLIEST_BOOKING_DATE'); 
-  
   if (startDatumRaw) {
     const parts = startDatumRaw.split('.');
-    
     if (parts.length >= 3) {
       const startTag = parseInt(parts[0], 10);
       const startMonat = parseInt(parts[1], 10) - 1; 
@@ -264,7 +181,6 @@ function validateRequest(data, userId, sender) {
       
       if (startJahr === today.getFullYear()) {
         const earliestAllowedDate = new Date(startJahr, startMonat, startTag, 0, 0, 0, 0);
-        
         if (today < earliestAllowedDate) {
           const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${startJahr}`;
           return { 
@@ -272,40 +188,26 @@ function validateRequest(data, userId, sender) {
             error: `Das Reservierungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.` 
           };
         }
-      } else if (startJahr < today.getFullYear()) {
-        Logger.log(`Hinweis: EARLIEST_BOOKING_DATE stammt aus dem Vorjahr (${startJahr}) und wird ignoriert.`);
       }
-    } else {
-      Logger.log("Warnung: EARLIEST_BOOKING_DATE hat kein gültiges 'TT.MM.JJJJ'-Format.");
     }
-  }
-  // ──────────────────────────────────────────────────────────────────────────
-  
-  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
-
-  if (!calendar) {
-    return { valid: false, error: 'Konfigurationsfehler: Kalender wurde nicht gefunden.' };
   }
 
   if (data.parsedDate < today) {
-    return { valid: false, error: 'Datum liegt in der Vergangenheit.' };
+    return { valid: false, error: 'Das gewählte Datum liegt in der Vergangenheit.' };
   }
 
   const seasonStart = getCurrentSeasonStart();
 
+  // JOKER-VALIDIERUNG
   if (data.type === 'joker') {
     if (data.parsedDate.getFullYear() !== today.getFullYear()) {
-      return { 
-        valid: false, 
-        error: `Joker-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` 
-      };
+      return { valid: false, error: `Joker-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` };
     }
 
     const seasonEnd = new Date(seasonStart);
     seasonEnd.setFullYear(seasonStart.getFullYear() + 1);
 
     const allEvents = calendar.getEvents(seasonStart, seasonEnd);
-
     const jokerEvents = allEvents.filter(e => {
       const desc = e.getDescription() || '';
       const title = e.getTitle() || '';
@@ -313,16 +215,14 @@ function validateRequest(data, userId, sender) {
     });
 
     if (jokerEvents.length >= 2) {
-      return { valid: false, error: 'Du hast bereits 2 Joker-Termine in dieser Saison.' };
+      return { valid: false, error: 'Du hast bereits das Maximum von 2 Joker-Terminen in dieser Saison erreicht.' };
     }
   }
 
+  // STANDARD-VALIDIERUNG
   if (data.type === 'standard') {
     if (data.parsedDate.getFullYear() !== today.getFullYear()) {
-      return {
-        valid: false,
-        error: `Standard-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.`
-      };
+      return { valid: false, error: `Standard-Termine sind nur für das aktuelle Kalenderjahr (${today.getFullYear()}) erlaubt.` };
     }
 
     const seasonEnd = new Date(today.getFullYear(), 11, 31, 23, 59, 59);
@@ -331,18 +231,14 @@ function validateRequest(data, userId, sender) {
     const activeStandardEvents = existingEvents.filter(e => {
       const desc = e.getDescription() || '';
       const title = e.getTitle() || '';
-      const eventStart = e.getStartTime();
-      
-      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && 
-             !title.includes('JOKER') && 
-             eventStart >= today;
+      return desc.includes(`Mitglieder-ID: ${memberData.id}`) && !title.includes('JOKER') && e.getStartTime() >= today;
     });
 
     if (activeStandardEvents.length > 0) {
       const bestehenderTermin = activeStandardEvents[0];
       return {
         valid: false,
-        error: `Du hast bereits einen Standard-Termin in dieser Saison gebucht (am ${formatDateDDMMYYYY(bestehenderTermin.getStartTime())}). Erst wenn dieser Termin vorbei ist, kannst du einen neuen Standard-Termin vereinbaren.`
+        error: `Du hast bereits einen aktiven Standard-Termin gebucht (am ${formatDateDDMMYYYY(bestehenderTermin.getStartTime())}). Erst wenn dieser Termin vorbei ist, kannst du einen neuen Standard-Termin vereinbaren.`
       };
     }
   }
@@ -358,7 +254,7 @@ function validateRequest(data, userId, sender) {
 
   const conflicting = calendar.getEvents(startTime, endTime);
   if (conflicting.length > 0) {
-    return { valid: false, error: 'Dieser Slot ist bereits belegt.' };
+    return { valid: false, error: 'Dieser Zeitraum (Slot) ist bereits von einem anderen Mitglied belegt.' };
   }
 
   data.startTime = startTime;
@@ -367,18 +263,11 @@ function validateRequest(data, userId, sender) {
   return { valid: true };
 }
 
-function createCalendarEvent(data, userId) {
+// Akzeptiert jetzt die bestehende Kalenderinstanz
+function createCalendarEvent(data, userId, calendar) {
   try {
-    const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
-    
-    const myPrefix = 'Boot:'; // <- HIER deinen gewünschten Prefix eintragen
-    
-    let title = '';
-    if (data.type === 'joker') {
-      title = `JOKER - ${myPrefix} ${data.name}`;
-    } else {
-      title = `${myPrefix} ${data.name}`;
-    }
+    const myPrefix = 'Boot:'; 
+    const title = data.type === 'joker' ? `JOKER - ${myPrefix} ${data.name}` : `${myPrefix} ${data.name}`;
 
     const description = [
       `Name: ${data.name}`,
@@ -397,7 +286,7 @@ function createCalendarEvent(data, userId) {
 
     return event;
   } catch (e) {
-    Logger.log('Fehler beim Erstellen: ' + e);
+    Logger.log('Fehler beim Erstellen des Kalendereintrags: ' + e);
     return null;
   }
 }
