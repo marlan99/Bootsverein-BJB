@@ -1172,72 +1172,14 @@ function sendDailyReservationReminders() {
 
 function ensureInitialSheet() {
   const scriptProperties = PropertiesService.getScriptProperties();
-  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID');
-  let sheetExistsAndOpens = false;
-
-  // 1. Prüfen, ob die ID existiert UND die Tabelle geöffnet werden kann
-  if (sheetId) {
-    try {
-      SpreadsheetApp.openById(sheetId);
-      sheetExistsAndOpens = true;
-      Logger.log(`✅ Bestehendes Google Sheet erfolgreich verifiziert (ID: ${sheetId}).`);
-    } catch (e) {
-      Logger.log(`⚠️ Warnung: Sheet-ID '${sheetId}' existiert, Datei konnte aber nicht geöffnet werden (evtl. gelöscht). Erstelle neues Sheet...`);
-      sheetExistsAndOpens = false;
-    }
+  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  if (!sheetId) {
+    Logger.log("📂 Initialisiere Google Sheet und Ordnerstruktur für den Erststart...");
+    getAuthorizedUserData(CONFIG.ADMIN_EMAIL);
+    Logger.log("✅ Google Sheet wurde erfolgreich im Google Drive angelegt.");
+  } else {
+    Logger.log("ℹ️ Google Sheet existiert bereits. ID: " + sheetId);
   }
-
-  // 2. Wenn kein Sheet existiert oder das alte nicht geöffnet werden konnte -> Neu erstellen
-  if (!sheetExistsAndOpens) {
-    try {
-      const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy');
-      const sheetName = `${CONFIG.RESERVATION_FOLDER_NAME || 'Bootsclub'} - Mitgliederdatenbank (Erstellt am ${dateStr})`;
-      
-      // Neues Google Sheet erstellen (landet zuerst im Root-Verzeichnis)
-      const newSpreadsheet = SpreadsheetApp.create(sheetName);
-      sheetId = newSpreadsheet.getId();
-      
-      // Die Kopfzeile direkt initialisieren
-      const sheet = newSpreadsheet.getSheets()[0];
-      sheet.setName('Mitglieder');
-      
-      const headers = ['ID', 'Vorname', 'Nachname', 'E-Mail', 'Status'];
-      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      
-      sheet.setFrozenRows(1);
-      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#f3f3f3');
-      
-      // --- NEU: IN SPREZIFISCHEN ORDNER VERSCHIEBEN ---
-      const folderName = "Google Kalender Reservierungssystem";
-      const folders = DriveApp.getFoldersByName(folderName);
-      let targetFolder;
-      
-      if (folders.hasNext()) {
-        // Ordner existiert bereits
-        targetFolder = folders.next();
-        Logger.log(`📂 Zielordner "${folderName}" gefunden.`);
-      } else {
-        // Ordner existiert noch nicht und wird neu angelegt
-        targetFolder = DriveApp.createFolder(folderName);
-        Logger.log(`📁 Zielordner "${folderName}" existierte nicht und wurde neu erstellt.`);
-      }
-      
-      // Datei im Zielordner hinzufügen und aus dem Root-Verzeichnis entfernen
-      const file = DriveApp.getFileById(sheetId);
-      targetFolder.addFile(file);
-      DriveApp.getRootFolder().removeFile(file);
-      
-      // 3. ID in den ScriptProperties aktualisieren
-      scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
-      Logger.log(`🆕 Initiales Google Sheet erfolgreich im Ordner "${folderName}" erstellt und ID aktualisiert!`);
-      Logger.log(`🔗 Neue Sheet-ID: ${sheetId}`);
-      
-    } catch (createError) {
-      Logger.log(`❌ KRITISCHER FEHLER bei der Neuerstellung des Sheets im Ordner: ${createError.message}`);
-    }
-  }
-  
-  return sheetId;
 }
 
 function fetchAndSyncAnleitungPDF() {
