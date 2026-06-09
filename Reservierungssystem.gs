@@ -321,7 +321,7 @@ function createCalendarEvent(data, userId, calendar) {
 }
 
 // =============================================================================
-// 2. EXCEL-IMPORT SYSTEM (EXCEL -> GOOGLE SHEET) - OPTIMIERT
+// 2. EXCEL-IMPORT SYSTEM (EXCEL -> GOOGLE SHEET) - OPTIMIERT & MIT ARCHIVIERUNG
 // =============================================================================
 
 function importExcelToSheets() {
@@ -350,7 +350,7 @@ function importExcelToSheets() {
       if (!message.isUnread()) continue;
       // Nur ungelesene Nachrichten der Konversation betrachten
 
-      // Optimierung 4: Sofort auf gelesen setzen, um Timeouts abzufangen
+      // Sofort auf gelesen setzen, um Timeouts abzufangen
       message.markRead();
       const sender = message.getFrom().toLowerCase();
       const subject = message.getSubject();
@@ -414,7 +414,7 @@ function importExcelToSheets() {
         } catch (e) {
           Logger.log(`❌ Fehler beim Verarbeiten der Import-Datei: ${e.message}`);
         } finally {
-          // Optimierung 2: Sicheres Löschen gemäß Drive API v3 (Verwendung von DriveApp für Kompatibilität)
+          // Sicheres Löschen der temporären Datei
           if (tempSheetFile && tempSheetFile.id) {
             try { 
               DriveApp.getFileById(tempSheetFile.id).setTrashed(true);
@@ -427,13 +427,21 @@ function importExcelToSheets() {
       if (importErfolgreich) break;
     }
     
-    // E-Mail-Status finalisieren
+    // E-Mail-Status finalisieren und aus der Inbox entfernen
     if (importErfolgreich) {
       if (targetLabel) thread.addLabel(targetLabel);
     } else {
       Logger.log(`⚠️ Thread [${thread.getFirstMessageSubject()}] wurde verarbeitet, konnte aber nicht erfolgreich importiert werden.`);
       if (errorLabel) thread.addLabel(errorLabel);
     }
+    
+    // NEU: Erzwingt das Verschieben ins Archiv (Entfernt das Posteingangs-Label)
+    thread.moveToArchive();
+  }
+
+  // NEU: Zwingt Gmail dazu, die Posteingangsansicht sofort zu aktualisieren
+  if (threads.length > 0) {
+    GmailApp.refreshThreads(threads);
   }
 
   // ─── KETTENREAKTION: TRACKING WIRD BEI JEDEM DURCHLAUF GESTARTET ──────────
