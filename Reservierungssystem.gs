@@ -64,20 +64,28 @@ function processReservationEmails() {
     });
   });
 
-  // Batch-Label-Zuweisung außerhalb der Schleife (Optimierung 1)
+  // Batch-Label-Zuweisung außerhalb der Schleife (KORRIGIERT)
   if (threadsErledigt.length > 0) {
     const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') ||
       GmailApp.createLabel('Reservierung/Erledigt');
-    GmailApp.addLabelsToThreads([labelErledigt], threadsErledigt);
-    GmailApp.removeLabelsFromThreads([labelNeu], threadsErledigt);
+    // Korrektur: Das Label-Objekt fügt sich den Threads hinzu
+    labelErledigt.addToThreads(threadsErledigt);
+    
+    if (labelNeu) {
+      labelNeu.removeFromThreads(threadsErledigt);
+    }
     GmailApp.moveThreadsToArchive(threadsErledigt);
   }
   
   if (threadsAbgelehnt.length > 0) {
     const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') ||
       GmailApp.createLabel('Reservierung/Abgelehnt');
-    GmailApp.addLabelsToThreads([labelAbgelehnt], threadsAbgelehnt);
-    GmailApp.removeLabelsFromThreads([labelNeu], threadsAbgelehnt);
+    // Korrektur: Das Label-Objekt fügt sich den Threads hinzu
+    labelAbgelehnt.addToThreads(threadsAbgelehnt);
+    
+    if (labelNeu) {
+      labelNeu.removeFromThreads(threadsAbgelehnt);
+    }
     GmailApp.moveThreadsToArchive(threadsAbgelehnt);
   }
 
