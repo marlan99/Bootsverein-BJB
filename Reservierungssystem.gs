@@ -834,6 +834,94 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
   }
 }
 
+/**
+ * Gleicht die Google-Kalender-Freigaben mit der aktuellen Mitgliederliste im Sheet ab.
+ * - Neue Mitglieder erhalten Leserechte ('reader' -> Alle Termindetails anzeigen).
+ * - Ausgetretene Mitglieder werden aus den Kalenderfreigaben gelöscht.
+ */
+function ausfuehrenKalenderSynchronisierung() {
+  Logger.log('🔮 Starte separate Kalender-Synchronisierung...');
+  
+  // 1. Zugriff auf das aktive Tabellenblatt
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getActiveSheet();
+  
+  // 2. Kalender-ID ermitteln (Nutzt CONFIG.CALENDAR_ID falls gesetzt, sonst den Primärkalender)
+  var kalenderId = CONFIG.CALENDAR_ID || 'primary';
+  
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('🛑 Synchronisierung abgebrochen: Keine Mitglieder im Sheet gefunden.');
+    return;
+  }
+  
+  // 3. E-Mail-Spalte auslesen (Nutzt CONFIG.SPALTE_EMAIL)
+  var daten = sheet.getRange(2, CONFIG.SPALTE_EMAIL, lastRow - 1, 1).getValues();
+  
+  // E-Mail-Adressen aus dem Sheet extrahieren und bereinigen
+  var sheetEmails = [];
+  for (var i = 0; i < daten.length; i++) {
+    var email = daten[i][0].toString().trim().toLowerCase();
+    if (email !== "" && email.indexOf('@') !== -1) {
+      sheetEmails.push(email);
+    }
+  }
+
+  try {
+    // 4. Aktuelle Zugriffskontrollliste (ACL) aus dem Google Kalender abrufen
+    var aktuelleAcl = Calendar.Acl.list(kalenderId);
+    var kalenderFreigaben = {}; // Struktur: { 'email@domain.com': 'ruleId' }
+
+    if (aktuelleAcl.items) {
+      for (var j = 0; j < aktuelleAcl.items.length; j++) {
+        var regel = aktuelleAcl.items[j];
+        // Nur Einträge vom Typ 'user' (einzelne Personen) betrachten
+        if (regel.scope && regel.scope.type === 'user') {
+          kalenderFreigaben[regel.scope.value.toLowerCase()] = regel.id;
+        }
+      }
+    }
+
+    var zaehlerHinzugefuegt = 0;
+    var zaehlerGeloescht = 0;
+
+    // 5. FREIGEBEN (Onboarding): Berechtigung erteilen, wenn im Sheet, aber nicht im Kalender
+    for (var k = 0; k < sheetEmails.length; k++) {
+      var zielEmail = sheetEmails[k];
+
+      if (!kalenderFreigaben[zielEmail]) {
+        var neueBerechtigung = {
+          'scope': { 'type': 'user', 'value': zielEmail },
+          'role': 'reader' // 'reader' entspricht im Google Kalender "Alle Termindetails anzeigen"
+        };
+        Calendar.Acl.insert(neueBerechtigung, kalenderId);
+        Logger.log('➕ Freigabe ERSTELLT für: ' + zielEmail);
+        zaehlerHinzugefuegt++;
+      }
+    }
+
+    // 6. SPERREN / ENTFERNEN (Offboarding): Freigabe löschen, wenn im Kalender, aber nicht mehr im Sheet
+    for (var kalenderEmail in kalenderFreigaben) {
+      // WICHTIGER SCHUTZ: Admin-E-Mail und die Kalender-ID selbst niemals aussperren!
+      if (kalenderEmail === kalenderId.toLowerCase() || kalenderEmail === CONFIG.ADMIN_EMAIL.toLowerCase()) {
+        continue;
+      }
+
+      if (sheetEmails.indexOf(kalenderEmail) === -1) {
+        var regelId = kalenderFreigaben[kalenderEmail];
+        Calendar.Acl.remove(kalenderId, regelId);
+        Logger.log('❌ Freigabe ENTFERNT für: ' + kalenderEmail);
+        zaehlerGeloescht++;
+      }
+    }
+
+    Logger.log('✅ Synchronisierung beendet. Hinzugefügt: ' + zaehlerHinzugefuegt + ' | Entfernt: ' + zaehlerGeloescht);
+
+  } catch (fehler) {
+    Logger.log('⚠️ Fehler bei der Kalender-Synchronisierung: ' + fehler.toString());
+  }
+}
+
 // =============================================================================
 // 5. HILFSFUNKTIONEN & STORNIERUNGSLOGIK
 // =============================================================================
