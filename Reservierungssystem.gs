@@ -292,7 +292,7 @@ function createCalendarEvent(data, userId, calendar) {
 }
 
 // =============================================================================
-// 2. EXCEL-IMPORT SYSTEM (EXCEL -> GOOGLE SHEET)
+// 2. EXCEL-IMPORT SYSTEM (EXCEL -> GOOGLE SHEET) - OPTIMIERT
 // =============================================================================
 
 function importExcelToSheets() {
@@ -310,21 +310,29 @@ function importExcelToSheets() {
   
   Logger.log(`Prüfe Posteingang auf neue Excel-Listen... Gefunden: ${threads.length}`);
   
+  const adminEmailLower = adminEmail.toLowerCase();
+  const targetLabel = GmailApp.getUserLabelByName(CONFIG.EXCEL_TARGET_LABEL) || createGmailLabelStructure(CONFIG.EXCEL_TARGET_LABEL);
+  const errorLabel = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
+
   for (let i = 0; i < threads.length; i++) {
-    const messages = threads[i].getMessages();
+    const thread = threads[i];
+    const messages = thread.getMessages();
     let importErfolgreich = false;
     
     for (let j = 0; j < messages.length; j++) {
       const message = messages[j];
+      if (!message.isUnread()) continue; // Nur ungelesene Nachrichten der Konversation betrachten
+
       const sender = message.getFrom().toLowerCase();
       const subject = message.getSubject();
       
-      if (subject !== CONFIG.EXCEL_SUBJECT) {
-        continue;
-      }
+      if (subject !== CONFIG.EXCEL_SUBJECT) continue;
       
-      if (sender.indexOf(adminEmail.toLowerCase()) === -1) {
+      // Berechtigungsprüfung via String-Vergleich
+      if (!sender.includes(adminEmailLower)) {
         Logger.log(`WARNUNG: E-Mail von unbefugtem Absender blockiert: ${sender}`);
+        message.markRead(); // Verhindert, dass unbefugte Mails das Skript blockieren
+        if (errorLabel) thread.addLabel(errorLabel);
         continue; 
       }
       
@@ -335,60 +343,75 @@ function importExcelToSheets() {
         const isExcel = attachment.getContentType() === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || 
                         attachment.getName().toLowerCase().endsWith(".xlsx");
         
-        if (isExcel) {
-          Logger.log(`Verarbeite Excel-Anhang: ${attachment.getName()}`);
-          const fileBlob = attachment.copyBlob();
-          let tempSheetFile = null;
+        if (!isExcel) continue;
+
+        Logger.log(`Verarbeite Excel-Anhang: ${attachment.getName()}`);
+        const fileBlob = attachment.copyBlob();
+        let tempSheetFile = null;
+        
+        try {
+          const resource = {
+            title: "temp_mitgliederliste_import_" + new Date().getTime(),
+            mimeType: MimeType.GOOGLE_SHEETS
+          };
           
-          try {
-            const resource = {
-              title: "temp_mitgliederliste_import_" + new Date().getTime(),
-              mimeType: MimeType.GOOGLE_SHEETS
-            };
-            tempSheetFile = Drive.Files.create(resource, fileBlob);
-            
-            const tempSpreadsheet = SpreadsheetApp.openById(tempSheetFile.id);
-            const tempSheet = tempSpreadsheet.getSheets()[0];
-            const tempLastRow = tempSheet.getLastRow();
-            const tempLastColumn = tempSheet.getLastColumn();
-            
-            if (tempLastRow <= 1) {
-              Drive.Files.remove(tempSheetFile.id);
-              continue;
-            }
-            
-            const newValues = tempSheet.getRange(2, 1, tempLastRow - 1, tempLastColumn).getValues();
-            
-            const targetSpreadsheet = SpreadsheetApp.openById(sheetId);
-            const targetSheet = targetSpreadsheet.getSheets()[0];
-            const targetLastRow = targetSheet.getLastRow();
-            
-            if (targetLastRow > 2) {
-              targetSheet.getRange(3, 1, targetLastRow - 2, targetSheet.getLastColumn()).clearContent();
-            }
-            
-            targetSheet.getRange(3, 1, newValues.length, tempLastColumn).setValues(newValues);
-            Logger.log(`✅ Mitgliederliste erfolgreich durch Excel-Mail aktualisiert.`);
-            
-            Drive.Files.remove(tempSheetFile.id);
-            tempSheetFile = null; 
-            importErfolgreich = true;
-            break; 
-            
-          } catch (e) {
-            Logger.log(`❌ Fehler beim Verarbeiten der Import-Datei: ${e.toString()}`);
-            if (tempSheetFile && tempSheetFile.id) {
-              try { Drive.Files.remove(tempSheetFile.id); } catch(err) {}
+          // Temporäres Google Sheet aus Excel-Blob erstellen
+          tempSheetFile = Drive.Files.create(resource, fileBlob);
+          
+          const tempSpreadsheet = SpreadsheetApp.openById(tempSheetFile.id);
+          const tempSheet = tempSpreadsheet.getSheets()[0];
+          const tempLastRow = tempSheet.getLastRow();
+          const tempLastColumn = tempSheet.getLastColumn();
+          
+          if (tempLastRow <= 1) {
+            Logger.log(`⚠️ Excel-Datei ${attachment.getName()} enthält keine Datenzeilen.`);
+            continue;
+          }
+          
+          // Daten im Speicher sichern
+          const newValues = tempSheet.getRange(2, 1, tempLastRow - 1, tempLastColumn).getValues();
+          
+          // Zugriff auf Ziel-Tabelle erst JETZT, wenn Daten validiert sind
+          const targetSpreadsheet = SpreadsheetApp.openById(sheetId);
+          const targetSheet = targetSpreadsheet.getSheets()[0];
+          const targetLastRow = targetSheet.getLastRow();
+          
+          // Erst bestehende Daten löschen (Ab Zeile 3)
+          if (targetLastRow > 2) {
+            targetSheet.getRange(3, 1, targetLastRow - 2, targetSheet.getLastColumn()).clearContent();
+          }
+          
+          // Neue Daten reinschreiben
+          targetSheet.getRange(3, 1, newValues.length, tempLastColumn).setValues(newValues);
+          Logger.log(`✅ Mitgliederliste erfolgreich durch Excel-Mail aktualisiert (${newValues.length} Mitglieder).`);
+          
+          importErfolgreich = true;
+          break; // Schleife für Anhänge abbrechen, da Import erfolgreich
+          
+        } catch (e) {
+          Logger.log(`❌ Fehler beim Verarbeiten der Import-Datei: ${e.message}`);
+        } finally {
+          // Sicheres Aufräumen: Temp-Datei wird IMMER gelöscht, egal ob Erfolg oder Fehler
+          if (tempSheetFile && tempSheetFile.id) {
+            try { 
+              Drive.Files.remove(tempSheetFile.id); 
+            } catch(err) {
+              Logger.log(`Hinweis beim Aufräumen: Temp-Datei konnte nicht gelöscht werden: ${err.message}`);
             }
           }
         }
       }
+      if (importErfolgreich) break; // Schleife für Nachrichten abbrechen
     }
     
+    // E-Mail-Status finalisieren
+    thread.markRead();
     if (importErfolgreich) {
-      threads[i].markRead();
-      let label = GmailApp.getUserLabelByName(CONFIG.EXCEL_TARGET_LABEL) || createGmailLabelStructure(CONFIG.EXCEL_TARGET_LABEL);
-      if (label) threads[i].addLabel(label);
+      if (targetLabel) thread.addLabel(targetLabel);
+    } else {
+      // Wenn der Thread durchgelaufen ist, aber kein erfolgreicher Import stattfand -> Als Fehler markieren
+      Logger.log(`⚠️ Thread [${thread.getFirstMessageSubject()}] wurde verarbeitet, konnte aber nicht erfolgreich importiert werden.`);
+      if (errorLabel) thread.addLabel(errorLabel);
     }
   }
 
