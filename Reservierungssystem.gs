@@ -1336,7 +1336,7 @@ function setupTriggers() {
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
   ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
   
-  ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
+  [CONFIG.GMAIL_LABEL, 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
   });
   Logger.log('========================================================================');
