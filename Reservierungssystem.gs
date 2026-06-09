@@ -839,63 +839,65 @@ function ausfuehrenKalenderSynchronisierung() {
     }
 
     // --- DYNAMISCHE SPALTENSUCHE ---
-    // Holt die gesamte Kopfzeile (Zeile 1), um die Spaltenindizes zu ermitteln
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    // Sucht die Position der E-Mail-Spalte anhand der Beschriftung
     const emailColIndex = headers.findIndex(h => h.toString().trim().toLowerCase() === 'e-mail' || h.toString().trim().toLowerCase() === 'email');
-    // Optional: Sucht auch die Status-Spalte, um inaktive Nutzer auszuschließen
     const statusColIndex = headers.findIndex(h => h.toString().trim().toLowerCase() === 'status');
+    
     if (emailColIndex === -1) {
-      Logger.log('❌ FEHLER: Spalte "E-Mail" oder "Email" konnte in der Kopfzeile (Zeile 1) nicht gefunden werden.');
+      Logger.log('❌ FEHLER: Spalte "E-Mail" oder "Email" konnte in der Kopfzeile nicht gefunden werden.');
       return;
     }
     Logger.log(`ℹ️ E-Mail-Spalte dynamisch auf Index ${emailColIndex} (Spalte ${String.fromCharCode(65 + emailColIndex)}) gefunden.`);
-    // -------------------------------
 
-    // Holt alle Daten ab Zeile 2
     const dataRange = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
     const sheetEmailsSet = new Set();
 
-    // 1. SCHRITT: Alle gültigen E-Mails aus dem Sheet sammeln
     for (let i = 0; i < dataRange.length; i++) {
       const email = dataRange[i][emailColIndex] ? dataRange[i][emailColIndex].toString().trim().toLowerCase() : '';
       const status = statusColIndex !== -1 && dataRange[i][statusColIndex] ? dataRange[i][statusColIndex].toString().trim().toLowerCase() : '';
-      // Nur Adressen hinzufügen, die ein '@' enthalten und NICHT den Status 'inaktiv' besitzen
+      
+      // Nur aktive Mitglieder mit gültiger E-Mail-Adresse übernehmen
       if (email && email.includes('@') && status !== 'inaktiv') {
         sheetEmailsSet.add(email);
       }
     }
 
     Logger.log(`📋 Anzahl gültiger (aktiver) Mitglieder aus der Tabelle: ${sheetEmailsSet.size}`);
-    // 2. SCHRITT: Aktuelle Kalender-Berechtigungen auslesen
+    
     const calendar = CalendarApp.getCalendarById(kalenderId);
     if (!calendar) {
       Logger.log(`❌ FEHLER: Kalender mit der ID '${kalenderId}' wurde nicht gefunden.`);
       return;
     }
 
+    // --- NATIVE API-ABFRAGE DER BERECHTIGUNGEN (ACL) ---
     let currentAclEmails = [];
     try {
-      currentAclEmails = DriveApp.getFileById(kalenderId)
-        .getEditors()
-        .map(user => user.getEmail().trim().toLowerCase());
-    } catch (driveError) {
-      Logger.log(`⚠️ Warnung beim ACL-Auslesen via DriveApp: ${driveError.message}`);
-      // Fallback, falls es der primäre Kalender ('primary') ist:
-      // Der primäre Kalender nutzt die eigene Mailadresse als ID.
-      currentAclEmails = DriveApp.getFolderById("root")
-        .getOwner().getEmail().trim().toLowerCase();
+      // Wenn 'primary' hinterlegt ist, lösen wir die ID zur echten E-Mail-ID des Kalenders auf
+      const realCalendarId = kalenderId === 'primary' ? calendar.getId() : kalenderId;
+      
+      // Holt alle Berechtigungseinträge direkt aus der Google Calendar API
+      const aclList = Calendar.Acl.list(realCalendarId);
+      
+      if (aclList && aclList.items) {
+        currentAclEmails = aclList.items
+          .filter(item => item.role === 'editor' || item.role === 'owner') // Nur User mit Schreibrechten beachten
+          .map(item => item.scope.value.trim().toLowerCase());
+      }
+    } catch (apiError) {
+      Logger.log(`❌ API-FEHLER beim Auslesen der Kalenderrechte: ${apiError.message}`);
+      Logger.log("👉 Bitte prüfe, ob du die 'Google Calendar API' links unter 'Dienste' (+ Symbol) im Editor hinzugefügt hast.");
+      return;
     }
       
     Logger.log(`📅 Anzahl Personen mit Kalender-Zugriff aktuell: ${currentAclEmails.length}`);
 
-    // 3. SCHRITT: KALENDER-ABGLEICH (Hinzufügen & Entfernen)
+    // --- SYNCHRONISATIONSLAUF ---
     
-    // A) Neue Mitglieder hinzufügen, die noch keinen Zugriff haben
+    // 1. NEUE MITGLIEDER HINZUFÜGEN: Wenn in Tabelle, aber noch nicht im Kalender
     sheetEmailsSet.forEach(email => {
-      // Den Admin selbst (Besitzer) nicht nochmals hinzufügen
-      if (email === CONFIG.ADMIN_EMAIL.toLowerCase()) return;
-
+      if (email === CONFIG.ADMIN_EMAIL.toLowerCase()) return; // Admin überspringen
+      
       if (!currentAclEmails.includes(email)) {
         try {
           calendar.addEditor(email);
@@ -905,11 +907,11 @@ function ausfuehrenKalenderSynchronisierung() {
         }
       }
     });
-    // B) Alte/Inaktive Mitglieder entfernen, die nicht mehr in der erlaubten Liste stehen
-    currentAclEmails.forEach(email => {
-      // Den Admin/Besitzer niemals aus dem eigenen Kalender entfernen!
-      if (email === CONFIG.ADMIN_EMAIL.toLowerCase()) return;
 
+    // 2. AUSGESCHIEDENE MITGLIEDER ENTFERNEN: Wenn im Kalender, aber nicht mehr in Tabelle
+    currentAclEmails.forEach(email => {
+      if (email === CONFIG.ADMIN_EMAIL.toLowerCase()) return; // Admin niemals löschen
+      
       if (!sheetEmailsSet.has(email)) {
         try {
           calendar.removeUser(email);
@@ -919,6 +921,7 @@ function ausfuehrenKalenderSynchronisierung() {
         }
       }
     });
+    
     Logger.log('✅ Kalender-Synchronisierung erfolgreich abgeschlossen!');
 
   } catch (error) {
