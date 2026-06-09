@@ -1178,12 +1178,10 @@ function ensureInitialSheet() {
   // 1. Prüfen, ob die ID existiert UND die Tabelle geöffnet werden kann
   if (sheetId) {
     try {
-      // Versuch, das bestehende Sheet zu öffnen
       SpreadsheetApp.openById(sheetId);
       sheetExistsAndOpens = true;
       Logger.log(`✅ Bestehendes Google Sheet erfolgreich verifiziert (ID: ${sheetId}).`);
     } catch (e) {
-      // HIER GREIFT DEIN SZENARIO: ID existiert, aber Sheet ist nicht öffnungsbar (z.B. gelöscht)
       Logger.log(`⚠️ Warnung: Sheet-ID '${sheetId}' existiert, Datei konnte aber nicht geöffnet werden (evtl. gelöscht). Erstelle neues Sheet...`);
       sheetExistsAndOpens = false;
     }
@@ -1195,30 +1193,47 @@ function ensureInitialSheet() {
       const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy');
       const sheetName = `${CONFIG.RESERVATION_FOLDER_NAME || 'Bootsclub'} - Mitgliederdatenbank (Erstellt am ${dateStr})`;
       
-      // Neues Google Sheet im Root-Verzeichnis von Drive erstellen
+      // Neues Google Sheet erstellen (landet zuerst im Root-Verzeichnis)
       const newSpreadsheet = SpreadsheetApp.create(sheetName);
       sheetId = newSpreadsheet.getId();
       
-      // Die Kopfzeile direkt initialisieren, damit die Struktur steht
+      // Die Kopfzeile direkt initialisieren
       const sheet = newSpreadsheet.getSheets()[0];
       sheet.setName('Mitglieder');
       
-      // Standard-Kopfzeilen (wichtig für die dynamische Spaltensuche deines Sync-Scripts)
-      const headers = ['ID', 'Vorname', 'Nachname', 'E-Mail'];
+      const headers = ['ID', 'Vorname', 'Nachname', 'E-Mail', 'Status'];
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       
-      // Erste Zeile visuell fixieren und fett formatieren
       sheet.setFrozenRows(1);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#f3f3f3');
       
-      // 3. ID in den ScriptProperties eintragen oder aktualisieren
+      // --- NEU: IN SPREZIFISCHEN ORDNER VERSCHIEBEN ---
+      const folderName = "Google Kalender Reservierungssystem";
+      const folders = DriveApp.getFoldersByName(folderName);
+      let targetFolder;
+      
+      if (folders.hasNext()) {
+        // Ordner existiert bereits
+        targetFolder = folders.next();
+        Logger.log(`📂 Zielordner "${folderName}" gefunden.`);
+      } else {
+        // Ordner existiert noch nicht und wird neu angelegt
+        targetFolder = DriveApp.createFolder(folderName);
+        Logger.log(`📁 Zielordner "${folderName}" existierte nicht und wurde neu erstellt.`);
+      }
+      
+      // Datei im Zielordner hinzufügen und aus dem Root-Verzeichnis entfernen
+      const file = DriveApp.getFileById(sheetId);
+      targetFolder.addFile(file);
+      DriveApp.getRootFolder().removeFile(file);
+      
+      // 3. ID in den ScriptProperties aktualisieren
       scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
-      Logger.log(`🆕 Initiales Google Sheet erfolgreich neu erstellt und ID aktualisiert!`);
+      Logger.log(`🆕 Initiales Google Sheet erfolgreich im Ordner "${folderName}" erstellt und ID aktualisiert!`);
       Logger.log(`🔗 Neue Sheet-ID: ${sheetId}`);
-      Logger.log(`📂 Name der neuen Datei: "${sheetName}"`);
       
     } catch (createError) {
-      Logger.log(`❌ KRITISCHER FEHLER bei der Neuerstellung des Sheets: ${createError.message}`);
+      Logger.log(`❌ KRITISCHER FEHLER bei der Neuerstellung des Sheets im Ordner: ${createError.message}`);
     }
   }
   
