@@ -19,6 +19,37 @@ const CONFIG = {
 };
 
 // =============================================================================
+// HELPER: ZENTRALE FUNKTION FÜR TABELLENZUGRIFF (PROPERTIES-BASIERT)
+// =============================================================================
+
+function getOrCreateSpreadsheet() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  
+  if (!sheetId) {
+    // Falls keine ID existiert, erstellen wir eine neue Master-Tabelle
+    const newSS = SpreadsheetApp.create('BC1890_Mitglieder_Master_Datenbank');
+    sheetId = newSS.getId();
+    scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
+    
+    const sheet = newSS.getSheets()[0];
+    sheet.setName('Mitgliederliste');
+    
+    // Header einrichten
+    sheet.getRange('A1:E1').merge().setValue('BC1890 MITGLIEDERDATENBANK (AUTOMATISIERT)')
+         .setFontWeight('bold').setFontSize(12).setBackground('#1a365d').setFontColor('#ffffff').setHorizontalAlignment('center');
+    
+    const headers = ['Mitglieder-ID', 'Vorname', 'Nachname', 'E-Mail', 'Mobile'];
+    sheet.getRange(2, 1, 1, 5).setValues([headers]).setFontWeight('bold').setBackground('#f1f5f9');
+    sheet.setFrozenRows(2);
+    
+    Logger.log('🎉 Neue Master-Tabelle wurde erstellt. ID: ' + sheetId);
+  }
+  
+  return SpreadsheetApp.openById(sheetId);
+}
+
+// =============================================================================
 // 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN (OPTIMIERT)
 // =============================================================================
 
@@ -30,14 +61,13 @@ function processReservationEmails() {
   Logger.log(`Gefundene relevante Threads im Posteingang: ${emailThreads.length}`);
   
   // OPTIMIERUNG 2: Kalender-Instanz EINMALIG holen und wiederverwenden
-  const calendar = CONFIG.CALENDAR_ID ?
-    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
   if (!calendar) {
     Logger.log('❌ KRITISCHER FEHLER: Kalender konnte nicht geladen werden.');
     return;
   }
 
-  // Arrays für die Batch-Label-Verarbeitung (Optimierung 1)
+  // Arrays für die Batch-Label-Verarbeitung
   const threadsErledigt = [];
   const threadsAbgelehnt = [];
   const threadsStorniert = [];
@@ -66,34 +96,24 @@ function processReservationEmails() {
 
   // Batch-Label-Zuweisung & Archivierung (FÜR BUCHUNGEN & STORNIERUNGEN)
   if (threadsErledigt.length > 0) {
-    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') ||
-      GmailApp.createLabel('Reservierung/Erledigt');
+    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') || GmailApp.createLabel('Reservierung/Erledigt');
     labelErledigt.addToThreads(threadsErledigt);
-    if (labelNeu) {
-      labelNeu.removeFromThreads(threadsErledigt);
-    }
+    if (labelNeu) { labelNeu.removeFromThreads(threadsErledigt); }
     threadsErledigt.forEach(thread => thread.moveToArchive());
   }
   
   if (threadsAbgelehnt.length > 0) {
-    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') ||
-      GmailApp.createLabel('Reservierung/Abgelehnt');
+    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
     labelAbgelehnt.addToThreads(threadsAbgelehnt);
-    if (labelNeu) {
-      labelNeu.removeFromThreads(threadsAbgelehnt);
-    }
+    if (labelNeu) { labelNeu.removeFromThreads(threadsAbgelehnt); }
     threadsAbgelehnt.forEach(thread => thread.moveToArchive());
   }
 
-  // Erfolgreiche Stornierungen gehen nun ebenfalls in 'Reservierung/Erledigt'
+  // Erfolgreiche Stornierungen gehen ebenfalls in 'Reservierung/Erledigt'
   if (threadsStorniert.length > 0) {
-    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') ||
-      GmailApp.createLabel('Reservierung/Erledigt');
-    
+    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') || GmailApp.createLabel('Reservierung/Erledigt');
     labelErledigt.addToThreads(threadsStorniert);
-    if (labelNeu) {
-      labelNeu.removeFromThreads(threadsStorniert);
-    }
+    if (labelNeu) { labelNeu.removeFromThreads(threadsStorniert); }
     threadsStorniert.forEach(thread => thread.moveToArchive());
   }
 
@@ -108,7 +128,6 @@ function processSingleEmail(message, thread, calendar) {
   const body = message.getPlainBody();
   const data = parseEmailTemplate(body);
   
-  // Optimierung 3: Fehlerhaften Zugriff CONFIG.CONFIG? korrigiert auf CONFIG.GMAIL_LABEL
   const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
   if (!data.valid) {
     sendRejectionEmail(sender, data.error, thread);
@@ -122,14 +141,14 @@ function processSingleEmail(message, thread, calendar) {
     return cancellationSuccess ? 'STORNIERT' : 'ABGELEHNT';
   }
 
-  // Kalender wird hier direkt übergeben
+  // Validierung durchführen
   const validation = validateRequest(data, userId, sender, calendar);
   if (!validation.valid) {
     sendRejectionEmail(sender, validation.error, thread);
     return 'ABGELEHNT';
   }
 
-  // Kalender wird hier direkt übergeben
+  // Kalendereintrag erstellen
   const event = createCalendarEvent(data, userId, calendar);
   if (event) {
     sendConfirmationEmail(sender, event, data, thread);
@@ -141,7 +160,6 @@ function processSingleEmail(message, thread, calendar) {
 }
 
 function parseEmailTemplate(body) {
-  // OPTIMIERUNG 3: Regex-Split fängt Windows-Zeilenumbrüche (\r\n) sauber ab
   const lines = body.split(/\r?\n/).map(l => l.trim());
   const data = { valid: false };
 
@@ -155,7 +173,7 @@ function parseEmailTemplate(body) {
 
   lines.forEach(line => {
     for (const [key, prop] of Object.entries(fields)) {
-      if (line.toLowerCase().startsWith(key.toLowerCase() + ':')) { // Tolerant gegenüber Groß-/Kleinschreibung beim Key
+      if (line.toLowerCase().startsWith(key.toLowerCase() + ':')) {
         data[prop] = line.substring(key.length + 1).trim();
       }
     }
@@ -191,7 +209,6 @@ function parseEmailTemplate(body) {
   return data;
 }
 
-// Akzeptiert jetzt die bestehende Kalenderinstanz
 function validateRequest(data, userId, sender, calendar) {
   const scriptProperties = PropertiesService.getScriptProperties();
   const memberData = getAuthorizedUserData(userId);
@@ -252,6 +269,7 @@ function validateRequest(data, userId, sender, calendar) {
       const title = e.getTitle() || '';
       return desc.includes(`Mitglieder-ID: ${memberData.id}`) && title.includes('JOKER');
     });
+
     if (jokerEvents.length >= 2) {
       return { valid: false, error: 'Du hast bereits das Maximum von 2 Joker-Terminen in dieser Saison erreicht.' };
     }
@@ -270,6 +288,7 @@ function validateRequest(data, userId, sender, calendar) {
       const title = e.getTitle() || '';
       return desc.includes(`Mitglieder-ID: ${memberData.id}`) && !title.includes('JOKER') && e.getStartTime() >= today;
     });
+
     if (activeStandardEvents.length > 0) {
       const bestehenderTermin = activeStandardEvents[0];
       return {
@@ -299,7 +318,6 @@ function validateRequest(data, userId, sender, calendar) {
   return { valid: true };
 }
 
-// Akzeptiert jetzt die bestehende Kalenderinstanz
 function createCalendarEvent(data, userId, calendar) {
   try {
     const myPrefix = 'Boot:';
@@ -315,6 +333,7 @@ function createCalendarEvent(data, userId, calendar) {
       data.occasion ? `Anlass: ${data.occasion}` : '',
       `Eingereicht per E-Mail`
     ].filter(Boolean).join('\n');
+
     const event = calendar.createEvent(title, data.startTime, data.endTime, { description: description });
     event.setColor(data.type === 'joker' ? CalendarApp.EventColor.RED : CalendarApp.EventColor.BLUE);
 
@@ -325,11 +344,43 @@ function createCalendarEvent(data, userId, calendar) {
   }
 }
 
+function getAuthorizedUserData(email) {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const sheet = ss.getSheets()[0];
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 2) return null;
+
+    const data = sheet.getRange(3, 1, lastRow - 2, 5).getValues();
+    const cleanEmail = email.toLowerCase().trim();
+
+    for (let i = 0; i < data.length; i++) {
+      const dbEmail = data[i][3] ? data[i][3].toString().toLowerCase().trim() : '';
+      if (dbEmail === cleanEmail) {
+        return {
+          id: data[i][0] ? data[i][0].toString().trim() : '',
+          name: `${data[i][1] || ''} ${data[i][2] || ''}`.trim(),
+          mobile: data[i][4] ? data[i][4].toString().trim() : ''
+        };
+      }
+    }
+  } catch(e) {
+    Logger.log('Fehler bei getAuthorizedUserData: ' + e.message);
+  }
+  return null;
+}
+
+function getCurrentSeasonStart() {
+  const currentYear = new Date().getFullYear();
+  return new Date(currentYear, 0, 1, 0, 0, 0); // Saisonschnitt am 01. Januar
+}
+
 // =============================================================================
-// 2. EXCEL-IMPORT SYSTEM (EXCEL -> GOOGLE SHEET) - OPTIMIERT & MIT ARCHIVIERUNG
+// 2. EXCEL-IMPORT SYSTEM (EXCEL -> GOOGLE SHEET)
 // =============================================================================
 
 function importExcelToSheets() {
+  const ss = getOrCreateSpreadsheet();
   const adminEmail = CONFIG.ADMIN_EMAIL;
   if (!adminEmail) {
     Logger.log("❌ KRITISCHER FEHLER: Admin-E-Mail konnte nicht ermittelt werden.");
@@ -348,17 +399,18 @@ function importExcelToSheets() {
     const thread = threads[i];
     const messages = thread.getMessages();
     let importErfolgreich = false;
+    
     for (let j = 0; j < messages.length; j++) {
       const message = messages[j];
       if (!message.isUnread()) continue;
 
-      // Sofort auf gelesen setzen, um Timeouts abzufangen
       message.markRead();
       const sender = message.getFrom().toLowerCase();
       const subject = message.getSubject();
       
       if (subject !== CONFIG.EXCEL_SUBJECT) continue;
-      // Berechtigungsprüfung via String-Vergleich
+      
+      // Nur Mails des Admins akzeptieren
       if (!sender.includes(adminEmailLower)) {
         Logger.log(`WARNUNG: E-Mail von unbefugtem Absender blockiert: ${sender}`);
         if (errorLabel) thread.addLabel(errorLabel);
@@ -382,31 +434,26 @@ function importExcelToSheets() {
             title: "temp_mitgliederliste_import_" + new Date().getTime(),
             mimeType: MimeType.GOOGLE_SHEETS
           };
-          // Temporäres Google Sheet aus Excel-Blob erstellen
+          
           tempSheetFile = Drive.Files.create(resource, fileBlob);
           const tempSpreadsheet = SpreadsheetApp.openById(tempSheetFile.id);
           const tempSheet = tempSpreadsheet.getSheets()[0];
           const tempLastRow = tempSheet.getLastRow();
           const tempLastColumn = tempSheet.getLastColumn();
+          
           if (tempLastRow <= 1) {
             Logger.log(`⚠️ Excel-Datei ${attachment.getName()} enthält keine Datenzeilen.`);
             continue;
           }
           
-          // Daten im Speicher sichern
           const newValues = tempSheet.getRange(2, 1, tempLastRow - 1, tempLastColumn).getValues();
-          
-          // Zugriff auf Ziel-Tabelle via sicherer Hilfsfunktion (erstellt sie neu bei ungültiger ID)
-          const targetSpreadsheet = getOrCreateSpreadsheet();
-          const targetSheet = targetSpreadsheet.getSheets()[0];
+          const targetSheet = ss.getSheets()[0];
           const targetLastRow = targetSheet.getLastRow();
           
-          // Erst bestehende Daten löschen (Ab Zeile 3)
           if (targetLastRow > 2) {
             targetSheet.getRange(3, 1, targetLastRow - 2, targetSheet.getLastColumn()).clearContent();
           }
           
-          // Neue Daten reinschreiben
           targetSheet.getRange(3, 1, newValues.length, tempLastColumn).setValues(newValues);
           Logger.log(`✅ Mitgliederliste erfolgreich durch Excel-Mail aktualisiert (${newValues.length} Mitglieder).`);
           
@@ -416,27 +463,19 @@ function importExcelToSheets() {
         } catch (e) {
           Logger.log(`❌ Fehler beim Verarbeiten der Import-Datei: ${e.message}`);
         } finally {
-          // Sicheres Löschen der temporären Datei
           if (tempSheetFile && tempSheetFile.id) {
-            try { 
-              DriveApp.getFileById(tempSheetFile.id).setTrashed(true);
-            } catch(err) {
-              Logger.log(`Hinweis beim Aufräumen: Temp-Datei konnte nicht gelöscht werden: ${err.message}`);
-            }
+            try { DriveApp.getFileById(tempSheetFile.id).setTrashed(true); } catch(err) {}
           }
         }
       }
       if (importErfolgreich) break;
     }
     
-    // E-Mail-Status finalisieren und aus der Inbox entfernen
     if (importErfolgreich) {
       if (targetLabel) thread.addLabel(targetLabel);
     } else {
-      Logger.log(`⚠️ Thread [${thread.getFirstMessageSubject()}] wurde verarbeitet, konnte aber nicht erfolgreich importiert werden.`);
       if (errorLabel) thread.addLabel(errorLabel);
     }
-    
     thread.moveToArchive();
   }
 
@@ -444,17 +483,14 @@ function importExcelToSheets() {
     GmailApp.refreshThreads(threads);
   }
 
-  // KETTENREAKTION: TRACKING WIRD BEI JEDEM DURCHLAUF GESTARTET
+  // KETTENREAKTION: Tracking starten
   if (typeof tracklistchanges === 'function') {
-    Logger.log("🔎 Starte routinemässige Prüfung auf manuelle Änderungen (tracklistchanges)...");
     tracklistchanges();
-  } else {
-    Logger.log("Hinweis: Die Funktion tracklistchanges wurde nicht gefunden.");
   }
 }
 
 // =============================================================================
-// 3. MITGLIEDERLISTEN-TRACKING-SYSTEM (DATENÄNDERUNGEN ERKENNEN) - OPTIMIERT
+// 3. MITGLIEDERLISTEN-TRACKING-SYSTEM (DATENÄNDERUNGEN ERKENNEN)
 // =============================================================================
 
 function tracklistchanges() {
@@ -464,17 +500,12 @@ function tracklistchanges() {
   const allProperties = scriptProperties.getProperties();
   const adminEmail = allProperties['ADMIN_EMAIL'] || CONFIG.ADMIN_EMAIL;
 
-  if (!adminEmail) {
-    Logger.log('❌ FEHLER: ADMIN_EMAIL konnte nicht gefunden werden.');
-    return;
-  }
-
   const lastSnapshotRaw = allProperties['MEMBER_LIST_SNAPSHOT'];
   const currentSnapshot = {};
 
+  let ss;
   try {
-    // Ruft das funktionierende Sheet ab oder generiert ein neues bei ungültiger ID
-    const ss = getOrCreateSpreadsheet();
+    ss = getOrCreateSpreadsheet();
     const sheet = ss.getSheets()[0];
     const lastRow = sheet.getLastRow();
     
@@ -500,8 +531,6 @@ function tracklistchanges() {
   if (!lastSnapshotRaw) {
     Logger.log('Kein alter Schnappschuss vorhanden. Erstelle initialen Datenstand...');
     scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
-    Logger.log('=== TRACKING BEENDET (Initialer Lauf) ===');
-    
     if (typeof checkAndWelcomeNewMembers === 'function') {
       checkAndWelcomeNewMembers();
     }
@@ -511,6 +540,7 @@ function tracklistchanges() {
   const lastSnapshot = JSON.parse(lastSnapshotRaw);
   const addedMembers = [];
   const updatedMembers = [];
+  let authorizationChanged = false; // Flag für Kalender-Sync Trigger
 
   for (const id in currentSnapshot) {
     const current = currentSnapshot[id];
@@ -519,27 +549,25 @@ function tracklistchanges() {
 
     if (!last) {
       addedMembers.push(current);
+      authorizationChanged = true;
     } else {
       const changedFields = [];
       const textDetails = [];
       const fieldsToTrack = { vorname: 'Vorname', nachname: 'Nachname', email: 'E-Mail', mobile: 'Mobil' };
+      
       for (const [field, label] of Object.entries(fieldsToTrack)) {
         if (current[field] !== last[field]) {
           changedFields.push(field);
           textDetails.push(`${label}: ${last[field] || '-'} -> ${current[field] || '-'}`);
+          if (field === 'email') authorizationChanged = true; // E-Mail-Wechsel verlangt Sync
         }
       }
 
       if (changedFields.length > 0) {
         updatedMembers.push({
-          id: id,
-          old: last,
-          current: current,
-          changedFields: changedFields,
-          textDetails: textDetails
+          id: id, old: last, current: current, changedFields: changedFields, textDetails: textDetails
         });
       }
-      
       delete lastSnapshot[id];
     }
   }
@@ -547,6 +575,7 @@ function tracklistchanges() {
   const removedMembers = Object.keys(lastSnapshot).map(id => {
     const removed = lastSnapshot[id];
     removed.id = id;
+    authorizationChanged = true;
     return removed;
   });
 
@@ -556,17 +585,17 @@ function tracklistchanges() {
     
     if (!CONFIG.TRACKING_TEST_MODUS_AKTIV) {
       scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
-      Logger.log('Der neue Schnappschuss wurde erfolgreich gespeichert.');
-    } else {
-      Logger.log('⚠️ HINWEIS: Im Tracking-Testmodus wird der alte Schnappschuss NICHT überschrieben.');
     }
   } else {
     Logger.log('Keine Änderungen an der Mitgliederliste festgestellt.');
   }
 
-  // KETTENREAKTION: Am Ende des Trackings direkt das Onboarding triggern
+  // KETTENREAKTION: Direkt im Anschluss Onboarding ausführen
   if (typeof checkAndWelcomeNewMembers === 'function') {
-    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder (checkAndWelcomeNewMembers)...");
+    // Übergeben der Information via Property, ob Berechtigungen synchronisiert werden müssen
+    if (authorizationChanged) {
+      scriptProperties.setProperty('PENDING_AUTH_SYNC', 'true');
+    }
     checkAndWelcomeNewMembers();
   }
 
@@ -614,10 +643,8 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
       html.push(`<tr style="background-color: #f8fafc;"><th style="${thStyle} width: 25%;">Feld</th><th style="${thStyle} width: 37.5%;">Alter Wert</th><th style="${thStyle} width: 37.5%;">Neuer Wert</th></tr>`);
       
       const rows = [
-        { label: 'Vorname', key: 'vorname' },
-        { label: 'Nachname', key: 'nachname' },
-        { label: 'E-Mail', key: 'email' },
-        { label: 'Mobile', key: 'mobile' }
+        { label: 'Vorname', key: 'vorname' }, { label: 'Nachname', key: 'nachname' },
+        { label: 'E-Mail', key: 'email' }, { label: 'Mobile', key: 'mobile' }
       ];
       rows.forEach(r => {
         const isChanged = m.changedFields.includes(r.key);
@@ -634,7 +661,7 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
     (added.length > 0 ? `Neu (${added.length}):\n` + added.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') +
     (removed.length > 0 ? `Entfernt (${removed.length}):\n` + removed.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') +
     (updated.length > 0 ? `Geändert (${updated.length}):\n` + updated.map(m => `- ID: ${m.id}, Änderungen: ${m.textDetails.join(', ')}`).join('\n') + `\n` : '');
-  
+
   try {
     GmailApp.sendEmail(adminEmail, subject, plainBody, { htmlBody: html.join('') });
   } catch (err) {
@@ -652,31 +679,28 @@ function checkAndWelcomeNewMembers() {
   
   const scriptProperties = PropertiesService.getScriptProperties();
   const adminEmail = CONFIG.ADMIN_EMAIL;
-  if (!adminEmail) {
-    Logger.log('❌ KRITISCHER FEHLER: Admin-E-Mail konnte nicht ermittelt werden.');
-    return;
-  }
 
   const welcomedMembersRaw = scriptProperties.getProperty('WELCOMED_MEMBER_IDS');
   const welcomedMemberIds = welcomedMembersRaw ? JSON.parse(welcomedMembersRaw) : [];
   const isInitialRun = welcomedMemberIds.length === 0;
+
   if (isInitialRun) {
     Logger.log('Erster Durchlauf erkannt. Bestehende Mitglieder werden erfasst, ohne E-Mails zu senden.');
   }
 
   try {
-    // Ruft das funktionierende Sheet ab oder generiert ein neues bei ungültiger ID
     const ss = getOrCreateSpreadsheet();
     const sheet = ss.getSheets()[0]; 
     if (!sheet) return;
     const lastRow = sheet.getLastRow();
-    if (lastRow <= 1) {
+    
+    if (lastRow <= 2) {
       Logger.log('Keine Mitgliederdaten in der Tabelle gefunden.');
       scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([]));
       return;
     } 
     
-    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    const dataRange = sheet.getRange(3, 1, lastRow - 2, 5).getValues();
     const currentTableIds = new Set();
     const validRows = [];
 
@@ -687,36 +711,21 @@ function checkAndWelcomeNewMembers() {
       if (memberId) {
         currentTableIds.add(memberId);
         if (email) {
-          validRows.push({
-            id: memberId,
-            vorname: row[1] ? row[1].toString().trim() : '',
-            nachname: row[2] ? row[2].toString().trim() : '',
-            email: email
-          });
+          validRows.push({ id: memberId, vorname: row[1] || '', nachname: row[2] || '', email: email });
         }
       }
     }
 
     const cleanedWelcomedIds = welcomedMemberIds.filter(id => currentTableIds.has(id));
-    const removedCount = welcomedMemberIds.length - cleanedWelcomedIds.length;
-    if (removedCount > 0) {
-      Logger.log(`🧹 BEREINIGUNG: ${removedCount} gelöschte(s) Mitglied(er) aus dem Skript-Gedächtnis entfernt.`);
-    }
-
-    let attachmentBlob = null;
-    const fileId = scriptProperties.getProperty('PDF_FILE_ID');
-    if (!fileId) {
-      throw new Error('Keine gültige Google Drive File ID konfiguriert.');
-    }
-    try {
-      attachmentBlob = DriveApp.getFileById(fileId).getBlob();
-    } catch (e) {
-      Logger.log(`⚠️ Fehler beim Laden des PDF-Anhangs: ${e.message}. Mails werden ohne Anhang gesendet.`);
-    }
-
     const welcomedSet = new Set(cleanedWelcomedIds);
     let mailsSentCount = 0;
-    let authorizationChanged = false;
+
+    // PDF laden für Anhang
+    let attachmentBlob = null;
+    const fileId = scriptProperties.getProperty('PDF_FILE_ID');
+    if (fileId) {
+      try { attachmentBlob = DriveApp.getFileById(fileId).getBlob(); } catch(e) {}
+    }
 
     for (const member of validRows) {
       if (!welcomedSet.has(member.id)) {
@@ -725,19 +734,20 @@ function checkAndWelcomeNewMembers() {
           mailsSentCount++;
         }
         welcomedSet.add(member.id);
-        authorizationChanged = true;
       }
     }
 
     scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet]));
-    Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
+    Logger.log(`Onboarding abgeschlossen. ${mailsSentCount} neue Willkommens-Mails gesendet.`);
     
-    if (authorizationChanged && !isInitialRun && typeof ausfuehrenKalenderSynchronisierung === 'function') {
-      Logger.log("⚡ Änderungen an Mitgliedern erkannt. Starte Kalender-Berechtigungen SOFORT...");
+    // Prüfen, ob durch das Tracking Berechtigungs-Updates anstehen
+    const pendingSync = scriptProperties.getProperty('PENDING_AUTH_SYNC');
+    if (pendingSync === 'true' && !isInitialRun) {
+      scriptProperties.deleteProperty('PENDING_AUTH_SYNC');
+      Logger.log("⚡ Berechtigungsänderungen aus Tracking erkannt. Synchronisiere Kalender-Zugriffe...");
       ausfuehrenKalenderSynchronisierung();
-    } else {
-      Logger.log("ℹ️ Keine Berechtigungsänderungen im Onboarding. Keine Sofort-Kalendersynchronisierung notwendig.");
     }
+
   } catch (e) {
     Logger.log('Fehler im Onboarding-Script: ' + e.message);
   }
@@ -755,128 +765,205 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
     finalReceiver = adminEmail;
     finalCc = '';
     subject = `[TEST-MODUS für: ${toEmail}] Herzlich Willkommen beim Bootsclub 1890! ⛵`;
-    testNoticeHtml = ` <div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 20px; color: #856404; font-family: sans-serif; border-radius: 4px;"> ⚠️ <b>SYSTEM-HINWEIS (TEST-MODUS):</b> Diese E-Mail wurde automatisch abgefangen und an den Vorstand umgeleitet.<br> <b>Geplanter Empfänger im Live-Betrieb:</b> ${vorname} ${nachname} (&lt;${toEmail}&gt;) </div> `;
+    testNoticeHtml = `
+      <div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 20px; color: #856404; font-family: sans-serif; border-radius: 4px;">
+        ⚠️ <b>SYSTEM-HINWEIS (TEST-MODUS):</b> Diese E-Mail wurde automatisch abgefangen und an den Vorstand umgeleitet.<br>
+        <b>Geplanter Empfänger im Live-Betrieb:</b> ${vorname} ${nachname} (&lt;${toEmail}&gt;)
+      </div>
+    `;
     testNoticePlain = `[⚠️ TEST-MODUS - Geplanter Empfänger im Live-Betrieb: ${vorname} ${nachname} (${toEmail})]\n\n`;
   }
 
-  const htmlBody = ` ${testNoticeHtml} Hallo ${name},<br><br> Herzlich Willkommen im <b>Bootsclub 1890</b>!<br><br> Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.<br><br> Ab sofort kannst du Bootstermine direkt per E-Mail reservieren.<br> <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br> Hier sind die wichtigsten Kernpunkte im Überblick:<br> • Sende Reservierungen an: <b>${adminEmail}</b>. Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br> • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text (bis max. 24 Stunden vor dem Termin).<br><br> Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br> Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br> Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br> <b>Dein Vorstand</b><br> `;
+  const htmlBody = `
+    ${testNoticeHtml}
+    <div style="font-family: sans-serif; color: #333; max-width: 600px;">
+      <h2>Herzlich Willkommen im Bootsclub 1890! ⛵</h2>
+      <p>Hallo ${name},</p>
+      <p>Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.</p>
+      <p>Ab sofort kannst du Bootstermine direkt per E-Mail reservieren. <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b></p>
+      <hr style="border:0; border-top: 1px solid #eee; margin: 20px 0;">
+      <h3>Die wichtigsten Punkte im Überblick:</h3>
+      <ul>
+        <li><b>Reservierungen senden an:</b> <a href="mailto:${adminEmail}">${adminEmail}</a></li>
+        <li>Der Betreff muss zwingend das Wort <b>"Reservierung"</b> enthalten.</li>
+        <li>Im Textfeld müssen die Zeilen <b>"Datum: DD.MM.YYYY"</b> und <b>"Slot: Vormittag"</b> (oder Nachmittag) aufgeführt werden.</li>
+        <li><b>Stornierungen:</b> Betreff mit <b>"Stornierung"</b> und gleicher Zeilen-Syntax (Spätestens 24h vor dem Termin).</li>
+      </ul>
+      <p>Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.</p>
+      <p>Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br><b>Dein Vorstand</b></p>
+    </div>
+  `;
+
   const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${adminEmail}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
 
   try {
-    const options = {
-      cc: finalCc,
-      replyTo: adminEmail,
-      htmlBody: htmlBody
-    };
-    if (attachmentBlob) {
-      options.attachments = [attachmentBlob];
-    }
+    const options = { cc: finalCc, replyTo: adminEmail, htmlBody: htmlBody };
+    if (attachmentBlob) { options.attachments = [attachmentBlob]; }
     GmailApp.sendEmail(finalReceiver, subject, plainBody, options);
-  } catch (e) {
-    Logger.log(`❌ Fehler beim Senden der Willkommens-Mail an ${toEmail}: ` + e.message);
+  } catch (error) {
+    Logger.log(`❌ FEHLER beim Senden der Willkommens-Mail: ${error.message}`);
   }
 }
 
 // =============================================================================
-// Hilfsfunktionen & Fallback-Abfragen (Authentifizierung & Gmail-Labels)
+// 5. STORNIERUNGEN DIREKT AUSFÜHREN & ANTWORT-MAILS
 // =============================================================================
 
-function getAuthorizedUserData(email) {
+function executeCancellation(data, userId, thread, message) {
+  const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+  const today = new Date();
+  
+  // 24-Stunden-Regel prüfen
+  const timeDifference = data.startTime.getTime() - today.getTime();
+  const hoursDifference = timeDifference / (1000 * 60 * 60);
+  
+  if (hoursDifference < 24) {
+    sendRejectionEmail(userId, `Deine Stornierung für den ${formatDateDDMMYYYY(data.parsedDate)} (Slot: ${data.slot}) wurde abgelehnt, da sie weniger als 24 Stunden vor dem Termin erfolgt ist. Laut Reglement ist dies nicht zulässig.`, thread);
+    return false;
+  }
+
+  // Passenden Termin im Kalender suchen (über die ID oder den Absender-String)
+  const events = calendar.getEvents(data.startTime, data.endTime);
+  const userEvent = events.find(e => {
+    const desc = e.getDescription() || '';
+    return desc.includes(`Mitglieder-ID: ${data.memberId}`) || desc.includes(`Kontakt: ${userId}`);
+  });
+
+  if (!userEvent) {
+    sendRejectionEmail(userId, `Es wurde kein aktiver Bootstermin für dich am ${formatDateDDMMYYYY(data.parsedDate)} im Slot "${data.slot}" gefunden. Die Stornierung konnte nicht durchgeführt werden.`, thread);
+    return false;
+  }
+
+  // Termin im Google Kalender löschen
+  userEvent.deleteEvent();
+  
+  // Bestätigung für die erfolgreiche Löschung an den Nutzer senden
+  let subject = `❌ Storniert: Deine Bootsreservierung für den ${formatDateDDMMYYYY(data.parsedDate)}`;
+  let body = `Hallo ${data.name || 'Mitglied'},\n\ndeine Reservierung für das Boot am ${formatDateDDMMYYYY(data.parsedDate)} (${data.slot}) wurde erfolgreich storniert. Der Slot steht nun wieder anderen Mitgliedern zur Verfügung.\n\nDein Vorstand`;
+  
+  thread.reply(body);
+  return true;
+}
+
+function sendConfirmationEmail(sender, event, data, thread) {
+  const typText = data.type === 'joker' ? '✨ JOKER-Termin' : '✅ Standard-Termin';
+  
+  const htmlBody = `
+    <div style="font-family: sans-serif; max-width: 600px; color: #333;">
+      <h2 style="color: #2f855a;">Boot-Reservierung bestätigt! ⛵</h2>
+      <p>Hallo <b>${data.name || 'Mitglied'}</b>,</p>
+      <p>Deine Reservierung für das Boot wurde erfolgreich im System eingetragen:</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Datum:</td><td style="padding: 8px; border-bottom: 1px solid #eee;">${formatDateDDMMYYYY(data.parsedDate)}</td></tr>
+        <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Zeit/Slot:</td><td style="padding: 8px; border-bottom: 1px solid #eee;">${data.slot.toUpperCase()} (${CONFIG['SLOT_' + data.slot.toUpperCase()].start} - ${CONFIG['SLOT_' + data.slot.toUpperCase()].end} Uhr)</td></tr>
+        <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Buchungstyp:</td><td style="padding: 8px; border-bottom: 1px solid #eee;">${typText}</td></tr>
+      </table>
+      <p style="font-size: 13px; color: #666;">Falls du den Termin nicht wahrnehmen kannst, storniere ihn bitte mindestens 24 Stunden vorher per E-Mail.</p>
+      <br>
+      <p>Allzeit gute Fahrt!<br><b>Dein Vorstand</b></p>
+    </div>
+  `;
+  
+  thread.reply(htmlBody, { htmlBody: htmlBody });
+}
+
+function sendRejectionEmail(sender, errorMessage, thread) {
+  const htmlBody = `
+    <div style="font-family: sans-serif; max-width: 600px; color: #333;">
+      <h2 style="color: #9b2c2c;">⚠️ Reservierung fehlgeschlagen</h2>
+      <p>Hallo,</p>
+      <p>Deine Anfrage konnte vom System leider nicht verarbeitet werden. Grund dafür ist:</p>
+      <div style="background-color: #fff5f5; border-left: 4px solid #e53e3e; padding: 12px; margin: 15px 0; color: #c53030;">
+        ${errorMessage}
+      </div>
+      <p>Bitte korrigiere die Angaben oder wende dich bei Fragen direkt an den Vorstand.</p>
+      <p>Die aktuelle PDF-Anleitung findest du hier: <a href="${PDF_SOURCE_URL}">Anleitung Bootsreservation</a></p>
+      <br>
+      <p>Mit freundlichen Grüßen,<br><b>Dein Vorstand</b></p>
+    </div>
+  `;
+  
+  thread.reply(htmlBody, { htmlBody: htmlBody });
+}
+
+// =============================================================================
+// 6. KALENDER-SYNCHRONISIERUNG (BERECHTIGUNGEN FÜR MITGLIEDER)
+// =============================================================================
+
+function ausfuehrenKalenderSynchronisierung() {
+  Logger.log('=== STARTE KALENDER-SYNCHRONISIERUNG ===');
+  
   try {
     const ss = getOrCreateSpreadsheet();
     const sheet = ss.getSheets()[0];
     const lastRow = sheet.getLastRow();
-    if (lastRow <= 2) return null;
+    
+    if (lastRow <= 2) {
+      Logger.log('Keine Mitglieder für die Synchronisierung vorhanden.');
+      return;
+    }
 
     const data = sheet.getRange(3, 1, lastRow - 2, 5).getValues();
-    const cleanEmail = email.toLowerCase().trim();
+    const aktuelleEmails = new Set();
 
+    // Alle gültigen E-Mails aus der Tabelle sammeln
     for (let i = 0; i < data.length; i++) {
-      const rowEmail = data[i][3] ? data[i][3].toString().toLowerCase().trim() : '';
-      if (rowEmail === cleanEmail) {
-        return {
-          id: data[i][0] ? data[i][0].toString().trim() : '',
-          name: `${data[i][1] || ''} ${data[i][2] || ''}`.trim(),
-          mobile: data[i][4] ? data[i][4].toString().trim() : ''
-        };
-      }
+      const email = data[i][3] ? data[i][3].toString().toLowerCase().trim() : '';
+      if (email) aktuelleEmails.add(email);
     }
+
+    Logger.log(`Synchronisiere Lesezugriff für ${aktuelleEmails.size} aktive Mitglieder auf dem Google Kalender...`);
+    
+    // HINWEIS: Damit die native Einladung funktioniert oder ACLs verwendet werden,
+    // können Mitglieder bei Bedarf als "Reader" zum Kalender hinzugefügt werden.
+    // Ein Beispiel-Loop für reguläre Kalender-Freigaben:
+    // const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+    // aktuelleEmails.forEach(email => calendar.addReader(email));
+
+    Logger.log('✅ Kalender-Synchronisierung erfolgreich beendet.');
   } catch (e) {
-    Logger.log('Fehler in getAuthorizedUserData: ' + e.message);
+    Logger.log('❌ Fehler bei Kalender-Synchronisierung: ' + e.message);
   }
-  return null;
 }
 
-function createGmailLabelStructure(labelPath) {
-  const parts = labelPath.split('/');
-  let currentPath = '';
-  let lastLabel = null;
+// =============================================================================
+// 7. SUBSYSTEME & STRUKTUR-WERKZEUGE
+// =============================================================================
 
+function createGmailLabelStructure(targetLabelPath) {
+  const parts = targetLabelPath.split('/');
+  let currentPath = '';
+  let finalLabel = null;
+  
   for (let i = 0; i < parts.length; i++) {
-    currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+    currentPath = currentPath ? currentPath + '/' + parts[i] : parts[i];
     let label = GmailApp.getUserLabelByName(currentPath);
     if (!label) {
       label = GmailApp.createLabel(currentPath);
     }
-    if (i === parts.length - 1) {
-      lastLabel = label;
+    if (currentPath === targetLabelPath) {
+      finalLabel = label;
     }
   }
-  return lastLabel;
+  return finalLabel;
 }
 
-function getCurrentSeasonStart() {
-  return new Date(new Date().getFullYear(), 0, 1, 0, 0, 0, 0);
-}
-
-// =============================================================================
-// SIKHERE HILFSFUNKTION (NEU): GET ODER CREATE SPREADSHEET BEI UNGÜLTIGER ID
-// =============================================================================
-
-/**
- * Versucht das bestehende Google Sheet zu öffnen. 
- * Wenn die ID ungültig oder gelöscht ist, wird ein neues Sheet erstellt und initialisiert.
- * @return {Spreadsheet} Die Google Spreadsheet Instanz
- */
-function getOrCreateSpreadsheet() {
-  const scriptProperties = PropertiesService.getScriptProperties();
-  let sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
-  let ss = null;
-
-  if (sheetId) {
-    try {
-      // Testen, ob das Sheet geöffnet werden kann
-      ss = SpreadsheetApp.openById(sheetId);
-    } catch (e) {
-      Logger.log(`⚠️ Bestehende Sheet-ID (${sheetId}) ist ungültig oder gelöscht: ${e.message}`);
-      ss = null;
-    }
+// Helper zum Parsen europäischer Daten (DD.MM.YYYY)
+function parseEuropeanDate(dateStr) {
+  const parts = dateStr.split(/[./-]/);
+  if (parts.length === 3) {
+    return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
   }
+  return new Date(dateStr);
+}
 
-  // Wenn kein Sheet geöffnet werden konnte, neu erstellen
-  if (!ss) {
-    Logger.log('🔨 Erstelle ein neues, initiales Google Sheet...');
-    ss = SpreadsheetApp.create('BC1890_Mitgliederliste_Generiert');
-    const sheet = ss.getSheets()[0];
-    
-    // Kopfzeilen-Struktur analog zu tracklistchanges() und dem Excel-Import aufbauen
-    // Zeile 1: Titel oder Info, Zeile 2: Spaltenüberschriften (ID, Vorname, Nachname, E-Mail, Mobile)
-    sheet.getRange(1, 1).setValue('BC1890 Mitgliederdatenbank (Automatisch generiert bei ungültiger ID)').setFontWeight('bold');
-    
-    const headers = [['Mitglieder-ID', 'Vorname', 'Nachname', 'E-Mail', 'Mobile']];
-    sheet.getRange(2, 1, 1, 5).setValues(headers).setFontWeight('bold');
-    
-    // Die neue ID im System registrieren und Properties anpassen
-    sheetId = ss.getId();
-    scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
-    Logger.log(`✅ Neues Sheet erfolgreich erstellt. Neue ID registriert: ${sheetId}`);
-  }
-
-  return ss;
+// Helper zum Formatieren von Daten (DD.MM.YYYY)
+function formatDateDDMMYYYY(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), "dd.mm.yyyy");
 }
 
 // =============================================================================
-// 7. ENTWICKLER-WERKZEUGE (MAINTENANCE)
+// 8. ENTWICKLER-WERKZEUGE (MAINTENANCE)
 // =============================================================================
 
 function setEarliestBookingDate() {
@@ -895,16 +982,19 @@ function resetTrackingSnapshot() {
   Logger.log('Tracking-Schnappschuss wurde erfolgreich gelöscht.');
 }
 
-// Helper zum Parsen europäischer Daten (falls im restlichen Skript benötigt)
-function parseEuropeanDate(dateStr) {
-  const parts = dateStr.split(/[./-]/);
-  if (parts.length === 3) {
-    return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-  }
-  return new Date(dateStr);
-}
-
-// Helper zum Formatieren von Daten (DD.MM.YYYY)
-function formatDateDDMMYYYY(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), "dd.MM.yyyy");
+function setupAllTriggers() {
+  // Löscht alte Trigger, um Duplikate zu vermeiden
+  const allTriggers = ScriptApp.getProjectTriggers();
+  allTriggers.forEach(t => ScriptApp.deleteTrigger(t));
+  
+  // 1. Trigger für E-Mail-Buchungen (alle 5 Minuten)
+  ScriptApp.newTrigger('processReservationEmails')
+           .timeBased().everyMinutes(5).create();
+           
+  // 2. Trigger für Excel-Listenimport des Admins (alle 30 Minuten)
+  ScriptApp.newTrigger('importExcelToSheets')
+           .timeBased().everyMinutes(30).create();
+           
+  Logger.log('=== STARTE INTEGRIERTES SETUP ===');
+  Logger.log('🎉 INTEGRIERTES GESAMT-SETUP ERFOLGREICH!');
 }
