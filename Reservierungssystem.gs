@@ -425,23 +425,26 @@ function importExcelToSheets() {
 }
 
 // =============================================================================
-// 3. MITGLIEDERLISTEN-TRACKING-SYSTEM (DATENÄNDERUNGEN ERKENNEN)
+// 3. MITGLIEDERLISTEN-TRACKING-SYSTEM (DATENÄNDERUNGEN ERKENNEN) - OPTIMIERT
 // =============================================================================
 
 function tracklistchanges() {
   Logger.log('=== STARTE MITGLIEDERLISTEN-TRACKING ===');
   
   const scriptProperties = PropertiesService.getScriptProperties();
-  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
-  const adminEmail = scriptProperties.getProperty('ADMIN_EMAIL') || CONFIG.ADMIN_EMAIL;
+  
+  // Alle Properties in EINEM einzigen Netzwerkaufruf holen
+  const allProperties = scriptProperties.getProperties();
+  const sheetId = allProperties['SHEET_CONFIG_ID'] || CONFIG.SHEET_CONFIG_ID;
+  const adminEmail = allProperties['ADMIN_EMAIL'] || CONFIG.ADMIN_EMAIL;
 
   if (!sheetId || !adminEmail) {
     Logger.log('❌ FEHLER: Weder SHEET_CONFIG_ID noch ADMIN_EMAIL konnten gefunden werden.');
     return;
   }
 
-  const lastSnapshotRaw = scriptProperties.getProperty('MEMBER_LIST_SNAPSHOT');
-  let currentSnapshot = {};
+  const lastSnapshotRaw = allProperties['MEMBER_LIST_SNAPSHOT'];
+  const currentSnapshot = {};
 
   try {
     const ss = SpreadsheetApp.openById(sheetId);
@@ -480,11 +483,11 @@ function tracklistchanges() {
   }
 
   const lastSnapshot = JSON.parse(lastSnapshotRaw);
-  let addedMembers = [];
-  let removedMembers = [];
-  let updatedMembers = [];
+  const addedMembers = [];
+  const updatedMembers = [];
 
-  for (let id in currentSnapshot) {
+  // OPTIMIERUNG 1: Abgleich und direktes Erkennen von Updates & Neuzugängen
+  for (const id in currentSnapshot) {
     const current = currentSnapshot[id];
     const last = lastSnapshot[id];
     current.id = id;
@@ -492,13 +495,17 @@ function tracklistchanges() {
     if (!last) {
       addedMembers.push(current);
     } else {
-      let changedFields = [];
-      let textDetails = [];
+      const changedFields = [];
+      const textDetails = [];
       
-      if (current.vorname !== last.vorname) { changedFields.push('vorname'); textDetails.push(`Vorname: ${last.vorname} -> ${current.vorname}`); }
-      if (current.nachname !== last.nachname) { changedFields.push('nachname'); textDetails.push(`Nachname: ${last.nachname} -> ${current.nachname}`); }
-      if (current.email !== last.email) { changedFields.push('email'); textDetails.push(`E-Mail: ${last.email} -> ${current.email}`); }
-      if (current.mobile !== last.mobile) { changedFields.push('mobile'); textDetails.push(`Mobil: ${last.mobile} -> ${current.mobile}`); }
+      // Felder dynamisch prüfen statt 4x hartem "if"
+      const fieldsToTrack = { vorname: 'Vorname', nachname: 'Nachname', email: 'E-Mail', mobile: 'Mobil' };
+      for (const [field, label] of Object.entries(fieldsToTrack)) {
+        if (current[field] !== last[field]) {
+          changedFields.push(field);
+          textDetails.push(`${label}: ${last[field] || '-'} -> ${current[field] || '-'}`);
+        }
+      }
 
       if (changedFields.length > 0) {
         updatedMembers.push({
@@ -509,16 +516,19 @@ function tracklistchanges() {
           textDetails: textDetails
         });
       }
+      
+      // OPTIMIERUNG 2: Gefundene IDs aus dem alten Snapshot löschen. 
+      // Alles was am Ende übrig bleibt, wurde aus der Tabelle gelöscht!
+      delete lastSnapshot[id];
     }
   }
 
-  for (let id in lastSnapshot) {
-    if (!currentSnapshot[id]) {
-      const removed = lastSnapshot[id];
-      removed.id = id;
-      removedMembers.push(removed);
-    }
-  }
+  // Was jetzt noch im alten Snapshot ist, wurde entfernt
+  const removedMembers = Object.keys(lastSnapshot).map(id => {
+    const removed = lastSnapshot[id];
+    removed.id = id;
+    return removed;
+  });
 
   if (addedMembers.length > 0 || removedMembers.length > 0 || updatedMembers.length > 0) {
     Logger.log(`Änderungen erkannt! Neu: ${addedMembers.length}, Gelöscht: ${removedMembers.length}, Geändert: ${updatedMembers.length}`);
@@ -552,57 +562,68 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
   const thStyle = 'background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 10px; text-align: left; color: #334155; font-weight: bold;';
   const tdStyle = 'border: 1px solid #e2e8f0; padding: 10px; vertical-align: top; color: #475569;';
 
-  let htmlBody = `
-    <div style="font-family: sans-serif; color: #333; max-width: 750px; line-height: 1.5;">
-      <h2 style="color: #1a365d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 20px;">Bericht: Änderungen an der Mitgliederliste</h2>
-      <p>Hallo Vorstand,<br>das automatisierte System hat Änderungen in der Mitglieder-Tabelle festgestellt. Nachfolgend findest du alle Details:</p>
-  `;
+  // OPTIMIERUNG 3: HTML-Push-Array statt träger String-Verkettung
+  const html = [
+    '<div style="font-family: sans-serif; color: #333; max-width: 750px; line-height: 1.5;">',
+    '<h2 style="color: #1a365d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 20px;">Bericht: Änderungen an der Mitgliederliste</h2>',
+    '<p>Hallo Vorstand,<br>das automatisierte System hat Änderungen in der Mitglieder-Tabelle festgestellt. Nachfolgend findest du alle Details:</p>'
+  ];
 
   if (added.length > 0) {
-    htmlBody += `<h3 style="color: #2f855a; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #c6f6d5; padding-bottom: 4px;">➕ Neu hinzugefügte Mitglieder (${added.length})</h3>
-    <table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`;
-    added.forEach(m => { htmlBody += `<tr><td style="${tdStyle}"><code>${m.id || ''}</code></td><td style="${tdStyle}"><b>${m.vorname} ${m.nachname}</b></td><td style="${tdStyle}">${m.email}</td><td style="${tdStyle}">${m.mobile || '-'}</td></tr>`; });
-    htmlBody += `</table>`;
+    html.push(`<h3 style="color: #2f855a; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #c6f6d5; padding-bottom: 4px;">➕ Neu hinzugefügte Mitglieder (${added.length})</h3>`,
+              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`);
+    added.forEach(m => { 
+      html.push(`<tr><td style="${tdStyle}"><code>${m.id || ''}</code></td><td style="${tdStyle}"><b>${m.vorname} ${m.nachname}</b></td><td style="${tdStyle}">${m.email}</td><td style="${tdStyle}">${m.mobile || '-'}</td></tr>`); 
+    });
+    html.push('</table>');
   }
 
   if (removed.length > 0) {
-    htmlBody += `<h3 style="color: #9b2c2c; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #fed7d7; padding-bottom: 4px;">➖ Entfernte Mitglieder (${removed.length})</h3>
-    <table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`;
-    removed.forEach(m => { htmlBody += `<tr style="background-color: #fafafa;"><td style="${tdStyle} color: #94a3b8;"><code>${m.id || ''}</code></td><td style="${tdStyle} color: #94a3b8;">${m.vorname} ${m.nachname}</td><td style="${tdStyle} color: #94a3b8;">${m.email}</td><td style="${tdStyle} color: #94a3b8;">${m.mobile || '-'}</td></tr>`; });
-    htmlBody += `</table>`;
+    html.push(`<h3 style="color: #9b2c2c; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #fed7d7; padding-bottom: 4px;">➖ Entfernte Mitglieder (${removed.length})</h3>`,
+              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`);
+    removed.forEach(m => { 
+      html.push(`<tr style="background-color: #fafafa;"><td style="${tdStyle} color: #94a3b8;"><code>${m.id || ''}</code></td><td style="${tdStyle} color: #94a3b8;">${m.vorname} ${m.nachname}</td><td style="${tdStyle} color: #94a3b8;">${m.email}</td><td style="${tdStyle} color: #94a3b8;">${m.mobile || '-'}</td></tr>`); 
+    });
+    html.push('</table>');
   }
 
   if (updated.length > 0) {
-    htmlBody += `<h3 style="color: #dd6b20; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #feebc8; padding-bottom: 4px;">⚠️ Aktualisierte Mitgliedsdaten (${updated.length})</h3>`;
+    html.push(`<h3 style="color: #dd6b20; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #feebc8; padding-bottom: 4px;">⚠️ Aktualisierte Mitgliedsdaten (${updated.length})</h3>`);
+    
     updated.forEach(m => {
-      const vNameStyle = m.changedFields.includes('vorname') ? 'background-color: #fffaf0; font-weight: bold; color: #c05621;' : '';
-      const nNameStyle = m.changedFields.includes('nachname') ? 'background-color: #fffaf0; font-weight: bold; color: #c05621;' : '';
-      const emailStyle = m.changedFields.includes('email') ? 'background-color: #fffaf0; font-weight: bold; color: #c05621;' : '';
-      const mobilStyle = m.changedFields.includes('mobile') ? 'background-color: #fffaf0; font-weight: bold; color: #c05621;' : '';
-
-      htmlBody += `
+      html.push(`
         <div style="margin-bottom: 25px; border-left: 4px solid #dd6b20; padding-left: 12px;">
           <span style="font-size: 15px; font-weight: bold; color: #2d3748;">Mitglied: ${m.current.vorname} ${m.current.nachname}</span> <span style="font-size: 13px; color: #718096; margin-left: 10px;">(ID: <code>${m.id}</code>)</span>
           <table style="${tableStyle} margin-top: 6px; margin-bottom: 5px;">
-            <tr style="background-color: #f8fafc;"><th style="${thStyle} width: 25%;">Feld</th><th style="${thStyle} width: 37.5%;">Alter Wert</th><th style="${thStyle} width: 37.5%;">Neuer Wert</th></tr>
-            <tr><td style="${tdStyle} ${vNameStyle}">Vorname</td><td style="${tdStyle} ${vNameStyle}">${m.old.vorname || '-'}</td><td style="${tdStyle} ${vNameStyle}">${m.current.vorname || '-'}</td></tr>
-            <tr><td style="${tdStyle} ${nNameStyle}">Nachname</td><td style="${tdStyle} ${nNameStyle}">${m.old.nachname || '-'}</td><td style="${tdStyle} ${nNameStyle}">${m.current.nachname || '-'}</td></tr>
-            <tr><td style="${tdStyle} ${emailStyle}">E-Mail</td><td style="${tdStyle} ${emailStyle}">${m.old.email || '-'}</td><td style="${tdStyle} ${emailStyle}">${m.current.email || '-'}</td></tr>
-            <tr><td style="${tdStyle} ${mobilStyle}">Mobile</td><td style="${tdStyle} ${mobilStyle}">${m.old.mobile || '-'}</td><td style="${tdStyle} ${mobilStyle}">${m.current.mobile || '-'}</td></tr>
-          </table>
-        </div>`;
+            <tr style="background-color: #f8fafc;"><th style="${thStyle} width: 25%;">Feld</th><th style="${thStyle} width: 37.5%;">Alter Wert</th><th style="${thStyle} width: 37.5%;">Neuer Wert</th></tr>`);
+      
+      // OPTIMIERUNG 4: Schleife für die Tabellenzeilen spart massiven Code-Duplikat-Overhead
+      const rows = [
+        { label: 'Vorname', key: 'vorname' },
+        { label: 'Nachname', key: 'nachname' },
+        { label: 'E-Mail', key: 'email' },
+        { label: 'Mobile', key: 'mobile' }
+      ];
+
+      rows.forEach(r => {
+        const isChanged = m.changedFields.includes(r.key);
+        const cellStyle = isChanged ? 'background-color: #fffaf0; font-weight: bold; color: #c05621;' : '';
+        html.push(`<tr><td style="${tdStyle} ${cellStyle}">${r.label}</td><td style="${tdStyle} ${cellStyle}">${m.old[r.key] || '-'}</td><td style="${tdStyle} ${cellStyle}">${m.current[r.key] || '-'}</td></tr>`);
+      });
+
+      html.push('</table></div>');
     });
   }
 
-  htmlBody += `<hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 40px;"><p style="font-size: 12px; color: #a0aec0;">Generiert am: ${new Date().toLocaleString('de-DE')}</p></div>`;
+  html.push(`<hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 40px;"><p style="font-size: 12px; color: #a0aec0;">Generiert am: ${new Date().toLocaleString('de-DE')}</p></div>`);
 
-  let plainBody = `Änderungsbericht Mitgliederliste BC1890\n\n`;
-  if (added.length > 0) plainBody += `Neu (${added.length}):\n` + added.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n`;
-  if (removed.length > 0) plainBody += `Entfernt (${removed.length}):\n` + removed.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n`;
-  if (updated.length > 0) plainBody += `Geändert (${updated.length}):\n` + updated.map(m => `- ID: ${m.id}, Änderungen: ${m.textDetails.join(', ')}`).join('\n') + `\n`;
+  const plainBody = `Änderungsbericht Mitgliederliste BC1890\n\n` +
+    (added.length > 0 ? `Neu (${added.length}):\n` + added.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') +
+    (removed.length > 0 ? `Entfernt (${removed.length}):\n` + removed.map(m => `- ID: ${m.id}, Name: ${m.vorname} ${m.nachname}`).join('\n') + `\n\n` : '') +
+    (updated.length > 0 ? `Geändert (${updated.length}):\n` + updated.map(m => `- ID: ${m.id}, Änderungen: ${m.textDetails.join(', ')}`).join('\n') + `\n` : '');
 
   try {
-    GmailApp.sendEmail(adminEmail, subject, plainBody, { htmlBody: htmlBody });
+    GmailApp.sendEmail(adminEmail, subject, plainBody, { htmlBody: html.join('') });
   } catch (err) {
     Logger.log('❌ Fehler beim Senden des Änderungsberichts: ' + err.message);
   }
