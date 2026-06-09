@@ -870,12 +870,12 @@ function ausfuehrenKalenderSynchronisierung() {
       return;
     }
 
+    // Bestimmt die echte ID (falls 'primary' genutzt wird, holen wir die konkrete Mail-ID des Kalenders)
+    const realCalendarId = kalenderId === 'primary' ? calendar.getId() : kalenderId;
+
     // --- NATIVE API-ABFRAGE DER BERECHTIGUNGEN (ACL) ---
     let currentAclEmails = [];
     try {
-      // Wenn 'primary' hinterlegt ist, lösen wir die ID zur echten E-Mail-ID des Kalenders auf
-      const realCalendarId = kalenderId === 'primary' ? calendar.getId() : kalenderId;
-      
       // Holt alle Berechtigungseinträge direkt aus der Google Calendar API
       const aclList = Calendar.Acl.list(realCalendarId);
       
@@ -900,7 +900,15 @@ function ausfuehrenKalenderSynchronisierung() {
       
       if (!currentAclEmails.includes(email)) {
         try {
-          calendar.addEditor(email);
+          // ✅ NATIVE API-VARIANTE: Erstellt eine neue Freigaberegel für den Benutzer
+          Calendar.Acl.insert({
+            role: 'editor',
+            scope: {
+              type: 'user',
+              value: email
+            }
+          }, realCalendarId);
+          
           Logger.log(`➕ Zugriff ERLAUBT für neues Mitglied: ${email}`);
         } catch (e) {
           Logger.log(`⚠️ Fehler beim Hinzufügen von ${email}: ${e.message}`);
@@ -914,8 +922,17 @@ function ausfuehrenKalenderSynchronisierung() {
       
       if (!sheetEmailsSet.has(email)) {
         try {
-          calendar.removeUser(email);
-          Logger.log(`➖ Zugriff ENTZOGEN für ausgeschiedenes/inaktives Mitglied: ${email}`);
+          // Um ein Recht per API zu löschen, müssen wir zuerst die "ruleId" für diese E-Mail auslesen
+          const aclList = Calendar.Acl.list(realCalendarId);
+          const userRule = aclList.items.find(item => item.scope.value.trim().toLowerCase() === email);
+          
+          if (userRule && userRule.id) {
+            // ✅ NATIVE API-VARIANTE: Löscht die Freigaberegel anhand der eindeutigen Regel-ID
+            Calendar.Acl.remove(realCalendarId, userRule.id);
+            Logger.log(`➖ Zugriff ENTZOGEN für ausgeschiedenes/inaktives Mitglied: ${email}`);
+          } else {
+            Logger.log(`ℹ️ Regel-ID für ${email} konnte nicht ermittelt werden. Evtl. bereits entfernt.`);
+          }
         } catch (e) {
           Logger.log(`⚠️ Fehler beim Entfernen von ${email}: ${e.message}`);
         }
