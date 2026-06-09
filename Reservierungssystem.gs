@@ -1084,7 +1084,7 @@ function getAuthorizedUserData(email) {
 
       sheet.appendRow(["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile"]);
       sheet.getRange(1, 1, 1, 5).setFontWeight("bold");
-      sheet.appendRow(["BJB-001", "Vorstand", "Boot", CONFIG.ADMIN_EMAIL, "Nicht hinterlegt"]);
+      sheet.appendRow(["BJB-000", "Vorstand", "", CONFIG.ADMIN_EMAIL, ""]);
       sheet.autoResizeColumns(1, 5);
 
       scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
