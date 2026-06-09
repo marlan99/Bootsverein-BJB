@@ -64,34 +64,37 @@ function processReservationEmails() {
     });
   });
 
-  // Batch-Label-Zuweisung außerhalb der Schleife (KORRIGIERT)
+// Batch-Label-Zuweisung außerhalb der Schleife (OPTIMIERT & ERZWUNGENE ARCHIVIERUNG)
   if (threadsErledigt.length > 0) {
     const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') ||
       GmailApp.createLabel('Reservierung/Erledigt');
-    // Korrektur: Das Label-Objekt fügt sich den Threads hinzu
-    labelErledigt.addToThreads(threadsErledigt);
     
+    labelErledigt.addToThreads(threadsErledigt);
     if (labelNeu) {
       labelNeu.removeFromThreads(threadsErledigt);
     }
-    GmailApp.moveThreadsToArchive(threadsErledigt);
+    // Erzwingt das Entfernen aus der Inbox für jeden einzelnen Thread im Batch
+    threadsErledigt.forEach(thread => thread.moveToArchive());
   }
   
   if (threadsAbgelehnt.length > 0) {
     const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') ||
       GmailApp.createLabel('Reservierung/Abgelehnt');
-    // Korrektur: Das Label-Objekt fügt sich den Threads hinzu
-    labelAbgelehnt.addToThreads(threadsAbgelehnt);
     
+    labelAbgelehnt.addToThreads(threadsAbgelehnt);
     if (labelNeu) {
       labelNeu.removeFromThreads(threadsAbgelehnt);
     }
-    GmailApp.moveThreadsToArchive(threadsAbgelehnt);
+    // Erzwingt das Entfernen aus der Inbox für jeden einzelnen Thread im Batch
+    threadsAbgelehnt.forEach(thread => thread.moveToArchive());
   }
 
   if (threadsStorniert.length > 0) {
-    GmailApp.moveThreadsToArchive(threadsStorniert);
+    threadsStorniert.forEach(thread => thread.moveToArchive());
   }
+
+  // Zwingt Gmail, die Ansicht des Posteingangs sofort zu aktualisieren
+  GmailApp.refreshThreads(emailThreads);
 }
 
 function processSingleEmail(message, thread, calendar) {
