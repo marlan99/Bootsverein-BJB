@@ -900,7 +900,7 @@ function ausfuehrenKalenderSynchronisierung() {
       
       if (!currentAclEmails.includes(email)) {
         try {
-          // ✅ NATIVE API-VARIANTE: Erstellt eine neue Freigaberegel für den Benutzer
+          // Native API-Variante: Erstellt eine neue Freigaberegel für den Benutzer
           Calendar.Acl.insert({
             role: 'editor',
             scope: {
@@ -911,7 +911,12 @@ function ausfuehrenKalenderSynchronisierung() {
           
           Logger.log(`➕ Zugriff ERLAUBT für neues Mitglied: ${email}`);
         } catch (e) {
-          Logger.log(`⚠️ Fehler beim Hinzufügen von ${email}: ${e.message}`);
+          // ✅ INTEGRIERTER SCHUTZ: Fängt ungültige Google-Konten ab (Bad Request)
+          if (e.message.includes('Bad Request') || e.message.includes('invalid')) {
+            Logger.log(`❌ HINWEIS für Admin bei ${email}: Diese Adresse besitzt vermutlich kein Google-Konto oder ist nicht für Google-Dienste registriert. (API-Fehler: Bad Request)`);
+          } else {
+            Logger.log(`⚠️ Unerwarteter Fehler beim Hinzufügen von ${email}: ${e.message}`);
+          }
         }
       }
     });
@@ -927,7 +932,7 @@ function ausfuehrenKalenderSynchronisierung() {
           const userRule = aclList.items.find(item => item.scope.value.trim().toLowerCase() === email);
           
           if (userRule && userRule.id) {
-            // ✅ NATIVE API-VARIANTE: Löscht die Freigaberegel anhand der eindeutigen Regel-ID
+            // Native API-Variante: Löscht die Freigaberegel anhand der eindeutigen Regel-ID
             Calendar.Acl.remove(realCalendarId, userRule.id);
             Logger.log(`➖ Zugriff ENTZOGEN für ausgeschiedenes/inaktives Mitglied: ${email}`);
           } else {
