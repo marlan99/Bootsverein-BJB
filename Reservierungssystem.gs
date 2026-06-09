@@ -1280,23 +1280,35 @@ function setupTriggers() {
   Logger.log('🚀 STARTE CENTRAL SYSTEM SETUP...');
   Logger.log('========================================================================');
 
-  ensureInitialSheet();
-  try {
-    fetchAndSyncAnleitungPDF();
-  } catch(pdfError) {
-    Logger.log("⚠️ Warnung beim PDF-Sync: " + pdfError.toString());
+  // NEU: Initialisiert das frühestmögliche Buchungsdatum beim Setup
+  if (typeof setearliestbookingdate === 'function') {
+    try {
+      setearliestbookingdate();
+      Logger.log('✅ setearliestbookingdate erfolgreich ausgeführt.');
+    } catch(bookingDateError) {
+      Logger.log("⚠️ Warnung bei setearliestbookingdate: " + bookingDateError.toString());
+    }
+  } else {
+    Logger.log("⚠️ Hinweis: Die Funktion setearliestbookingdate wurde im Skript nicht gefunden.");
   }
 
-  const existingTriggers = ScriptApp.getProjectTriggers();
-  existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
+  ensureInitialSheet(); [cite: 456]
+  try {
+    fetchAndSyncAnleitungPDF(); [cite: 456]
+  } catch(pdfError) {
+    Logger.log("⚠️ Warnung beim PDF-Sync: " + pdfError.toString()); [cite: 456]
+  }
+
+  const existingTriggers = ScriptApp.getProjectTriggers(); [cite: 456]
+  existingTriggers.forEach(t => ScriptApp.deleteTrigger(t)); [cite: 456]
 
   // Trigger-Definitionen
-  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create();
-  ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
-  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
+  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create(); [cite: 456]
+  ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create(); [cite: 456]
+  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create(); [cite: 456]
   
-  ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
-    if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
+  ['Reservierung/Neu', 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => { [cite: 456]
+    if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label); [cite: 456]
   });
   Logger.log('========================================================================');
   Logger.log('🎉 INTEGRIERTES GESAMT-SETUP ERFOLGREICH!');
