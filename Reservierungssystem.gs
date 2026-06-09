@@ -12,11 +12,10 @@ const CONFIG = {
   GMAIL_LABEL: 'Reservierung/Neu',               [cite: 2]
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' }, [cite: 2]
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' }, [cite: 2]
-  TEST_MODUS_AKTIV: false, [cite: 2]
   EXCEL_SUBJECT: 'Mitgliederliste', [cite: 2]
   EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste', [cite: 2]
+  TEST_MODUS_AKTIV: false, [cite: 2]
   TRACKING_TEST_MODUS_AKTIV: false, [cite: 2]
-  SPALTE_EMAIL: 4 // für die Kalender-Synchronisierung (Spalte D)
 };
 
 // =============================================================================
