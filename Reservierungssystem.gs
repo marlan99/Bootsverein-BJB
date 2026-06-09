@@ -11,10 +11,10 @@ const CONFIG = {
   CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
   GMAIL_LABEL: 'Reservierung/Neu',
+  EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
+  EXCEL_SUBJECT: 'Mitgliederliste',
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
-  EXCEL_SUBJECT: 'Mitgliederliste',
-  EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
   TEST_MODUS_AKTIV: false,
   TRACKING_TEST_MODUS_AKTIV: false,
 };
