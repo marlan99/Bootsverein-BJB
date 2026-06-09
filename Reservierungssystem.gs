@@ -697,7 +697,7 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
 }
 
 // =============================================================================
-// 4. ONBOARDING & WILLKOMMENS-SYSTEM
+// 4. ONBOARDING & WILLKOMMENS-SYSTEM (OPTIMIERT)
 // =============================================================================
 
 function checkAndWelcomeNewMembers() {
@@ -713,10 +713,10 @@ function checkAndWelcomeNewMembers() {
     return;
   }
 
-  let welcomedMembersRaw = scriptProperties.getProperty('WELCOMED_MEMBER_IDS');
-  let welcomedMemberIds = welcomedMembersRaw ? JSON.parse(welcomedMembersRaw) : [];
-  
+  const welcomedMembersRaw = scriptProperties.getProperty('WELCOMED_MEMBER_IDS');
+  const welcomedMemberIds = welcomedMembersRaw ? JSON.parse(welcomedMembersRaw) : [];
   const isInitialRun = welcomedMemberIds.length === 0;
+  
   if (isInitialRun) {
     Logger.log('Erster Durchlauf erkannt. Bestehende Mitglieder werden erfasst, ohne E-Mails zu senden.');
   }
@@ -734,40 +734,64 @@ function checkAndWelcomeNewMembers() {
     } 
     
     const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
-    let currentTableIds = [];
     
-    for (let i = 0; i < dataRange.length; i++) {
-      const memberId = dataRange[i][0] ? dataRange[i][0].toString().trim() : '';
-      if (memberId) currentTableIds.push(memberId);
-    }
-
-    let cleanedWelcomedIds = welcomedMemberIds.filter(id => currentTableIds.includes(id));
-    let removedCount = welcomedMemberIds.length - cleanedWelcomedIds.length;
-    if (removedCount > 0) {
-      Logger.log(`🧹 BEREINIGUNG: ${removedCount} gelöschte(s) Mitglied(er) aus dem Skript-Gedächtnis entfernt.`);
-    }
-
-    let mailsSentCount = 0;
+    // 1. SCHLEIFEN-OPTIMIERUNG: IDs sammeln und Daten validieren in EINEM Durchlauf
+    const currentTableIds = new Set();
+    const validRows = [];
 
     for (let i = 0; i < dataRange.length; i++) {
       const row = dataRange[i];
       const memberId = row[0] ? row[0].toString().trim() : '';
-      const vorname = row[1] ? row[1].toString().trim() : '';
-      const nachname = row[2] ? row[2].toString().trim() : '';
       const email = row[3] ? row[3].toString().trim() : '';
       
-      if (!memberId || !email) continue;
-
-      if (!cleanedWelcomedIds.includes(memberId)) {
-        if (!isInitialRun) {
-          sendWelcomeMail(email, vorname, nachname, adminEmail);
-          mailsSentCount++;
+      if (memberId) {
+        currentTableIds.add(memberId);
+        if (email) {
+          validRows.push({
+            id: memberId,
+            vorname: row[1] ? row[1].toString().trim() : '',
+            nachname: row[2] ? row[2].toString().trim() : '',
+            email: email
+          });
         }
-        cleanedWelcomedIds.push(memberId);
       }
     }
 
-    scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify(cleanedWelcomedIds));
+    // 2. BEREINIGUNG: Schneller Abgleich dank Set.has()
+    const cleanedWelcomedIds = welcomedMemberIds.filter(id => currentTableIds.has(id));
+    const removedCount = welcomedMemberIds.length - cleanedWelcomedIds.length;
+    if (removedCount > 0) {
+      Logger.log(`🧹 BEREINIGUNG: ${removedCount} gelöschte(s) Mitglied(er) aus dem Skript-Gedächtnis entfernt.`);
+    }
+
+    // 3. I/O OPTIMIERUNG: PDF einmalig VOR der Schleife holen (spart massiv API-Aufrufe)
+    let attachmentBlob = null;
+    const fileId = scriptProperties.getProperty('PDF_FILE_ID');
+    if (!fileId) {
+      throw new Error('Keine gültige Google Drive File ID konfiguriert.');
+    }
+    try {
+      attachmentBlob = DriveApp.getFileById(fileId).getBlob();
+    } catch (e) {
+      Logger.log(`⚠️ Fehler beim Laden des PDF-Anhangs: ${e.message}. Mails werden ohne Anhang gesendet.`);
+    }
+
+    // 4. VERARBEITUNG: Willkommens-Mails senden
+    const welcomedSet = new Set(cleanedWelcomedIds);
+    let mailsSentCount = 0;
+
+    for (const member of validRows) {
+      if (!welcomedSet.has(member.id)) {
+        if (!isInitialRun) {
+          sendWelcomeMail(member.email, member.vorname, member.nachname, adminEmail, attachmentBlob);
+          mailsSentCount++;
+        }
+        welcomedSet.add(member.id);
+      }
+    }
+
+    // Zurück in Array konvertieren für Speicherung
+    scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet]));
     Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
   } catch (e) {
@@ -775,9 +799,9 @@ function checkAndWelcomeNewMembers() {
   }
 }
 
-function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
-  const name = vorname ? vorname : 'Mitglied';
-  const scriptProperties = PropertiesService.getScriptProperties();
+// Erwartet jetzt den fertigen Blob, um DriveApp-Aufrufe in der Schleife zu verhindern
+function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob) {
+  const name = vorname || 'Mitglied';
   
   let finalReceiver = toEmail;
   let finalCc = adminEmail; 
@@ -817,18 +841,17 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
   const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${adminEmail}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
 
   try {
-    const fileId = scriptProperties.getProperty('PDF_FILE_ID');
-    if (!fileId) throw new Error('Keine gültige Google Drive File ID konfiguriert.');
-    
-    const pdfFile = DriveApp.getFileById(fileId);
-    const attachmentBlob = pdfFile.getBlob();
-
-    GmailApp.sendEmail(finalReceiver, subject, plainBody, {
+    const options = {
       cc: finalCc, 
       replyTo: adminEmail,
-      htmlBody: htmlBody,
-      attachments: [attachmentBlob]
-    });
+      htmlBody: htmlBody
+    };
+
+    if (attachmentBlob) {
+      options.attachments = [attachmentBlob];
+    }
+
+    GmailApp.sendEmail(finalReceiver, subject, plainBody, options);
   } catch (error) {
     Logger.log(`❌ FEHLER beim Senden der Willkommens-Mail: ${error.message}`);
   }
@@ -836,63 +859,58 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail) {
 
 /**
  * Gleicht die Google-Kalender-Freigaben mit der aktuellen Mitgliederliste im Sheet ab.
- * - Neue Mitglieder erhalten Leserechte ('reader' -> Alle Termindetails anzeigen).
- * - Ausgetretene Mitglieder werden aus den Kalenderfreigaben gelöscht.
  */
 function ausfuehrenKalenderSynchronisierung() {
   Logger.log('🔮 Starte separate Kalender-Synchronisierung...');
   
-  // 1. Zugriff auf das aktive Tabellenblatt
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = spreadsheet.getActiveSheet();
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const sheetId = scriptProperties.getProperty('SHEET_CONFIG_ID') || CONFIG.SHEET_CONFIG_ID;
+  const kalenderId = CONFIG.CALENDAR_ID || 'primary';
   
-  // 2. Kalender-ID ermitteln (Nutzt CONFIG.CALENDAR_ID falls gesetzt, sonst den Primärkalender)
-  var kalenderId = CONFIG.CALENDAR_ID || 'primary';
-  
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    Logger.log('🛑 Synchronisierung abgebrochen: Keine Mitglieder im Sheet gefunden.');
-    return;
-  }
-  
-  // 3. E-Mail-Spalte auslesen (Nutzt CONFIG.SPALTE_EMAIL)
-  var daten = sheet.getRange(2, CONFIG.SPALTE_EMAIL, lastRow - 1, 1).getValues();
-  
-  // E-Mail-Adressen aus dem Sheet extrahieren und bereinigen
-  var sheetEmails = [];
-  for (var i = 0; i < daten.length; i++) {
-    var email = daten[i][0].toString().trim().toLowerCase();
-    if (email !== "" && email.indexOf('@') !== -1) {
-      sheetEmails.push(email);
-    }
-  }
-
   try {
-    // 4. Aktuelle Zugriffskontrollliste (ACL) aus dem Google Kalender abrufen
-    var aktuelleAcl = Calendar.Acl.list(kalenderId);
-    var kalenderFreigaben = {}; // Struktur: { 'email@domain.com': 'ruleId' }
+    // Sicherer Zugriff via ID statt activeSpreadsheet (wichtig für automatisierte Trigger)
+    const ss = SpreadsheetApp.openById(sheetId);
+    const sheet = ss.getSheets()[0];
+    
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      Logger.log('🛑 Synchronisierung abgebrochen: Keine Mitglieder im Sheet gefunden.');
+      return;
+    }
+    
+    const daten = sheet.getRange(2, CONFIG.SPALTE_EMAIL, lastRow - 1, 1).getValues();
+    
+    // E-Mails extrahieren und direkt in ein Set für O(1) Lookups speichern
+    const sheetEmailsSet = new Set();
+    for (let i = 0; i < daten.length; i++) {
+      const email = daten[i][0].toString().trim().toLowerCase();
+      if (email !== "" && email.includes('@')) {
+        sheetEmailsSet.add(email);
+      }
+    }
+
+    // Aktuelle Zugriffskontrollliste (ACL) abrufen
+    const aktuelleAcl = Calendar.Acl.list(kalenderId);
+    const kalenderFreigaben = {}; // { 'email@domain.com': 'ruleId' }
 
     if (aktuelleAcl.items) {
-      for (var j = 0; j < aktuelleAcl.items.length; j++) {
-        var regel = aktuelleAcl.items[j];
-        // Nur Einträge vom Typ 'user' (einzelne Personen) betrachten
+      for (let j = 0; j < aktuelleAcl.items.length; j++) {
+        const regel = aktuelleAcl.items[j];
         if (regel.scope && regel.scope.type === 'user') {
           kalenderFreigaben[regel.scope.value.toLowerCase()] = regel.id;
         }
       }
     }
 
-    var zaehlerHinzugefuegt = 0;
-    var zaehlerGeloescht = 0;
+    let zaehlerHinzugefuegt = 0;
+    let zaehlerGeloescht = 0;
 
-    // 5. FREIGEBEN (Onboarding): Berechtigung erteilen, wenn im Sheet, aber nicht im Kalender
-    for (var k = 0; k < sheetEmails.length; k++) {
-      var zielEmail = sheetEmails[k];
-
+    // 5. FREIGEBEN (Onboarding): Set.has() statt Schleife über Kalenderobjekte
+    for (const zielEmail of sheetEmailsSet) {
       if (!kalenderFreigaben[zielEmail]) {
-        var neueBerechtigung = {
+        const neueBerechtigung = {
           'scope': { 'type': 'user', 'value': zielEmail },
-          'role': 'reader' // 'reader' entspricht im Google Kalender "Alle Termindetails anzeigen"
+          'role': 'reader'
         };
         Calendar.Acl.insert(neueBerechtigung, kalenderId);
         Logger.log('➕ Freigabe ERSTELLT für: ' + zielEmail);
@@ -900,25 +918,29 @@ function ausfuehrenKalenderSynchronisierung() {
       }
     }
 
-    // 6. SPERREN / ENTFERNEN (Offboarding): Freigabe löschen, wenn im Kalender, aber nicht mehr im Sheet
-    for (var kalenderEmail in kalenderFreigaben) {
-      // WICHTIGER SCHUTZ: Admin-E-Mail und die Kalender-ID selbst niemals aussperren!
-      if (kalenderEmail === kalenderId.toLowerCase() || kalenderEmail === CONFIG.ADMIN_EMAIL.toLowerCase()) {
+    // 6. SPERREN / ENTFERNEN (Offboarding)
+    const adminEmailLower = CONFIG.ADMIN_EMAIL.toLowerCase();
+    const kalenderIdLower = kalenderId.toLowerCase();
+
+    for (const kalenderEmail in kalenderFreigaben) {
+      // Schutz vor Aussperrung
+      if (kalenderEmail === kalenderIdLower || kalenderEmail === adminEmailLower) {
         continue;
       }
 
-      if (sheetEmails.indexOf(kalenderEmail) === -1) {
-        var regelId = kalenderFreigaben[kalenderEmail];
+      // Schneller Abgleich mit .has() des Sets
+      if (!sheetEmailsSet.has(kalenderEmail)) {
+        const regelId = kalenderFreigaben[kalenderEmail];
         Calendar.Acl.remove(kalenderId, regelId);
         Logger.log('❌ Freigabe ENTFERNT für: ' + kalenderEmail);
         zaehlerGeloescht++;
       }
     }
 
-    Logger.log('✅ Synchronisierung beendet. Hinzugefügt: ' + zaehlerHinzugefuegt + ' | Entfernt: ' + zaehlerGeloescht);
+    Logger.log(`✅ Synchronisierung beendet. Hinzugefügt: ${zaehlerHinzugefuegt} | Entfernt: ${zaehlerGeloescht}`);
 
   } catch (fehler) {
-    Logger.log('⚠️ Fehler bei der Kalender-Synchronisierung: ' + fehler.toString());
+    Logger.log('⚠️ Fehler bei der Kalender-Synchronisierung: ' + fehler.message);
   }
 }
 
