@@ -874,8 +874,7 @@ function ausfuehrenKalenderSynchronisierung() {
       return;
     }
 
-    const aclList = calendar.getUsersWithAccess();
-    const currentAclEmails = aclList.map(user => user.toString().trim().toLowerCase());
+    const currentAclEmails = calendar.getEditors().map(email => email.trim().toLowerCase());
     Logger.log(`📅 Anzahl Personen mit Kalender-Zugriff aktuell: ${currentAclEmails.length}`);
 
     // 3. SCHRITT: KALENDER-ABGLEICH (Hinzufügen & Entfernen)
