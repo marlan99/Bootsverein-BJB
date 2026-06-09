@@ -508,13 +508,13 @@ function testSuccessfulCancellation() {
 }
 
 function testRejectedCancellation() {
-  const todayDate = getFutureDate(0, 'DOT_LEAD'); 
-  createTestEmail({ body: `Datum: ${todayDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Kurzfrist-Test` });
+  const tomorrowDate = getFutureDate(1, 'DOT_LEAD');  
+  createTestEmail({ body: `Datum: ${tomorrowDate}\nSlot: Nachmittag\nTyp: Standard\nBeschreibung: Kurzfrist-Test` });
   labelTestEmails();
   processReservationEmails();
   createTestEmail({ 
     subject: 'Stornierung Termin', 
-    body: `Datum: ${todayDate}\nSlot: Nachmittag` 
+    body: `Datum: ${tomorrowDate}\nSlot: Nachmittag` 
   });
   labelTestEmails();
   processReservationEmails();
