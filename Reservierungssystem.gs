@@ -947,13 +947,42 @@ function executeCancellation(data, userId, thread, message) {
 
 function sendConfirmationEmail(to, event, data, thread) {
   const subject = 'Buchung bestätigt: ' + event.getTitle();
-  const htmlBody = `Hallo ${data.name},<br><br>dein Termin wurde erfolgreich eingetragen:<br><br>📅 <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>🕒 <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}<br><br>Dein Vorstand`;
-  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen.`;
+  
+  // 1. Der reine Text-Body (Fallback) erhält ebenfalls saubere Emojis
+  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\n📅 Datum: ${formatDateDDMMYYYY(data.parsedDate)}\n🕒 Slot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\n\nDein Vorstand`;
+  
+  // 2. Der HTML-Body (erzwingt die korrekte Codierung im Mail-Client)
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+      <p>Hallo ${data.name},</p>
+      <p>dein Termin wurde erfolgreich eingetragen:</p>
+      <p style="line-height: 1.6;">
+        📅 <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>
+        🕒 <b>Slot:</b> ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}
+      </p>
+      <p>Dein Vorstand</p>
+    </div>
+  `;
+
+  // 3. Erweiterte Optionen für den Entwurf (Draft) vorbereiten
+  const advancedOptions = { 
+    replyTo: CONFIG.ADMIN_EMAIL, 
+    htmlBody: htmlBody 
+  };
 
   try {
-    GmailApp.sendEmail(to, subject, plainBody, { replyTo: CONFIG.ADMIN_EMAIL, htmlBody: htmlBody });
+    // Direktes Senden der Mail mit den erweiterten Optionen
+    GmailApp.sendEmail(to, subject, plainBody, advancedOptions);
   } catch (error) {
-    if (thread) thread.createDraftReply(plainBody, { htmlBody: htmlBody });
+    Logger.log(`⚠️ Direktes Senden fehlgeschlagen, erstelle Entwurf... Fehler: ${error.message}`);
+    if (thread) {
+      try {
+        // Falls das direkte Senden fehlschlägt, wird die Antwort im Thread als sauberer Entwurf abgelegt
+        thread.createDraftReply(plainBody, advancedOptions);
+      } catch (draftError) {
+        Logger.log(`❌ Fehler beim Erstellen des Entwurfs: ${draftError.message}`);
+      }
+    }
   }
 }
 
