@@ -496,7 +496,7 @@ function tracklistchanges() {
     
     // 3. ABBRUCH, wenn sich die Datei seit dem letzten Lauf nicht verändert hat
     if (fileLastModified === lastProcessedTime) {
-      Logger.log('ℹ️ Keine Dateiänderung im Google Drive seit der letzten Prüfung. Abbrach, um Ressourcen zu schonen.');
+      Logger.log('ℹ️ Keine Dateiänderung im Google Drive seit der letzten Prüfung. Abbruch, um Ressourcen zu schonen.');
       return;
     }
     
