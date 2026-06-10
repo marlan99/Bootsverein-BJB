@@ -556,11 +556,40 @@ function tracklistchanges() {
       addedMembers.push(current);
     } else {
       const prev = previousSnapshot[id];
+      
       if (current.vorname !== prev.vorname || 
           current.nachname !== prev.nachname || 
           current.email !== prev.email || 
           current.mobile !== prev.mobile) {
-        updatedMembers.push({ id: id, old: prev, current: current });
+        
+        // === KORREKTUR: Vollständiges Objekt mit changedFields und textDetails ===
+        const changedFields = [];
+        const textDetails = [];
+        
+        if (current.vorname !== prev.vorname) {
+          changedFields.push('vorname');
+          textDetails.push(`Vorname: ${prev.vorname} → ${current.vorname}`);
+        }
+        if (current.nachname !== prev.nachname) {
+          changedFields.push('nachname');
+          textDetails.push(`Nachname: ${prev.nachname} → ${current.nachname}`);
+        }
+        if (current.email !== prev.email) {
+          changedFields.push('email');
+          textDetails.push(`E-Mail: ${prev.email} → ${current.email}`);
+        }
+        if (current.mobile !== prev.mobile) {
+          changedFields.push('mobile');
+          textDetails.push(`Mobile: ${prev.mobile} → ${current.mobile}`);
+        }
+
+        updatedMembers.push({ 
+          id: id, 
+          old: prev, 
+          current: current,
+          changedFields: changedFields,
+          textDetails: textDetails
+        });
       }
     }
   }
