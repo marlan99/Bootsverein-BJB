@@ -1,0 +1,96 @@
+/**
+ * Liest alle Google-Kontakte aus und gibt für jeden Kontakt 
+ * mit gültiger E-Mail-Adresse den Kalender frei.
+ */
+function alleKontakteFuerKalenderFreigeben() {
+  // 1. EINSTELLUNGEN: Trage hier deine Kalender-ID ein
+  // (Falls leer, wird der primäre Kalender deines Kontos genutzt)
+  const KALENDER_ID = ''; 
+  
+  let realCalendarId = KALENDER_ID.trim();
+  if (!realCalendarId) {
+    realCalendarId = 'primary';
+  }
+  
+  Logger.log('====================================================');
+  Logger.log('🚀 STARTE MASSEN-FREIGABE AUS KONTAKTEN');
+  Logger.log('====================================================');
+  
+  let nextPageToken = '';
+  let verarbeiteteKontakte = 0;
+  let erfolgreicheFreigaben = 0;
+  let fehlerFreigaben = 0;
+  
+  try {
+    do {
+      // Holt jeweils 100 Kontakte über die People API
+      const response = People.People.Connections.list('people/me', {
+        personFields: 'names,emailAddresses',
+        pageSize: 100,
+        pageToken: nextPageToken
+      });
+      
+      const connections = response.connections;
+      if (!connections || connections.length === 0) {
+        Logger.log('Keine Kontakte im Google-Konto gefunden.');
+        break;
+      }
+      
+      for (let i = 0; i < connections.length; i++) {
+        const person = connections[i];
+        const name = person.names && person.names.length > 0 ? person.names[0].displayName : 'Unbekannter Name';
+        const emails = person.emailAddresses;
+        
+        // Wenn der Kontakt keine E-Mail-Adresse hat, überspringen
+        if (!emails || emails.length === 0) continue;
+        
+        verarbeiteteKontakte++;
+        
+        // Ein Kontakt kann mehrere E-Mail-Adressen haben
+        for (let j = 0; j < emails.length; j++) {
+          const roheEmail = emails[j].value;
+          const email = roheEmail.toString().trim().toLowerCase().replace(/[\u00a0\s\r\n]+/g, '');
+          
+          Logger.log(`Processing [${verarbeiteteKontakte}]: ${name} (${email})`);
+          
+          try {
+            // API-Aufruf zur Freigabe des Kalenders (Rolle: Editor / Schreibrechte)
+            Calendar.Acl.insert({
+              role: 'editor',
+              scope: {
+                type: 'user',
+                value: email
+              }
+            }, realCalendarId);
+            
+            Logger.log(`  ✅ Zugriff erfolgreich erlaubt.`);
+            erfolgreicheFreigaben++;
+            
+            // Kurze Pause einlegen (0.5 Sekunden), um Google-API-Limits nicht sofort zu sprengen
+            Utilities.sleep(500);
+            
+          } catch (apiFehler) {
+            if (apiFehler.message.includes('Bad Request')) {
+              Logger.log(`  ❌ Google lehnt diese Adresse ab (Bad Request).`);
+            } else {
+              Logger.log(`  ⚠️ Fehler: ${apiFehler.message}`);
+            }
+            fehlerFreigaben++;
+          }
+        }
+      }
+      
+      nextPageToken = response.nextPageToken;
+    } while (nextPageToken);
+    
+    Logger.log('====================================================');
+    Logger.log('🎉 FERTIG!');
+    Logger.log(`Kontakte mit E-Mails geprüft: ${verarbeiteteKontakte}`);
+    Logger.log(`Erfolgreich freigegeben:      ${erfolgreicheFreigaben}`);
+    Logger.log(`Fehlgeschlagen / Blockiert:   ${fehlerFreigaben}`);
+    Logger.log('====================================================');
+    
+  } catch (e) {
+    Logger.log(`❌ Globaler Fehler im Skript: ${e.toString()}`);
+  }
+}
