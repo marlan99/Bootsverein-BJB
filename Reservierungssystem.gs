@@ -415,6 +415,9 @@ function importExcelToSheets() {
           Logger.log(`✅ Mitgliederliste erfolgreich durch Excel-Mail aktualisiert (${newValues.length} Mitglieder).`);
           
           importErfolgreich = true;
+          // Zeitstempel-Cache löschen, damit tracklistchanges() nicht wegen
+          // des noch nicht aktualisierten Drive-Timestamps abbricht
+          PropertiesService.getScriptProperties().deleteProperty('LAST_SHEET_MODIFIED_TIME');
           break; // Schleife für Anhänge abbrechen, da Import erfolgreich
           
         } catch (e) {
