@@ -339,7 +339,7 @@ function importExcelToSheets() {
     return;
   }
   
-  const searchQuery = `subject:"${CONFIG.EXCEL_SUBJECT}" is:unread`;
+  const searchQuery = `subject:"${CONFIG.EXCEL_SUBJECT}" is:unread has:attachment`;
   const threads = GmailApp.search(searchQuery);
   
   Logger.log(`Prüfe Posteingang auf neue Excel-Listen... Gefunden: ${threads.length}`);
@@ -601,7 +601,7 @@ function tracklistchanges() {
 }
 
 function sendChangeReportMail(adminEmail, added, removed, updated) {
-  let subject = `✅ Änderungsbericht: Mitgliederliste BC1890`;
+  let subject = `✅ Änderungsbericht: Mitglieder BC1890`;
   if (CONFIG.TRACKING_TEST_MODUS_AKTIV) subject = `[TEST] ` + subject;
 
   const tableStyle = 'width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; font-size: 14px;';
