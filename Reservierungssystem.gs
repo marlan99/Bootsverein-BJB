@@ -460,27 +460,49 @@ function importExcelToSheets() {
 }
 
 // =============================================================================
-// 3. MITGLIEDERLISTEN-TRACKING-SYSTEM (DATENÄNDERUNGEN ERKENNEN) - OPTIMIERT
+// 3. ERWEITERTE FUNKTIONALITÄT: MITGLIEDER-TRACKING & AUTOMATISCHES ONBOARDING
 // =============================================================================
 
+/**
+ * Überprüft die Mitgliederliste auf Änderungen (Hinzugefügt, Aktualisiert, Entfernt)
+ * OPTIMIERT: Öffnet das Google Sheet nur, wenn sich die Datei im Drive verändert hat.
+ */
 function tracklistchanges() {
-  Logger.log('=== STARTE MITGLIEDERLISTEN-TRACKING ===');
+  Logger.log('🔎 Starte Überprüfung der Mitgliederliste auf Änderungen...');
   
   const scriptProperties = PropertiesService.getScriptProperties();
-  // Alle Properties in EINEM einzigen Netzwerkaufruf holen
   const allProperties = scriptProperties.getProperties();
-  const sheetId = allProperties['SHEET_CONFIG_ID'] || CONFIG.SHEET_CONFIG_ID;
-  const adminEmail = allProperties['ADMIN_EMAIL'] || CONFIG.ADMIN_EMAIL;
-
-  if (!sheetId || !adminEmail) {
-    Logger.log('❌ FEHLER: Weder SHEET_CONFIG_ID noch ADMIN_EMAIL konnten gefunden werden.');
+  
+  // Sheet-ID ermitteln
+  let sheetId = allProperties['SHEET_CONFIG_ID'];
+  if (!sheetId) {
+    sheetId = typeof CONFIG !== 'undefined' && CONFIG.SHEET_CONFIG_ID ? CONFIG.SHEET_CONFIG_ID : '';
+  }
+  
+  if (!sheetId) {
+    Logger.log('❌ Fehler: Keine SHEET_CONFIG_ID in den ScriptProperties oder im CONFIG-Objekt gefunden.');
     return;
   }
-
-  const lastSnapshotRaw = allProperties['MEMBER_LIST_SNAPSHOT'];
+  
   const currentSnapshot = {};
-
+  
   try {
+    // 1. DATEI-METADATEN HOLEN (Sehr schnell, öffnet das Tabellenblatt noch nicht)
+    const file = DriveApp.getFileById(sheetId);
+    const fileLastModified = file.getLastUpdated().getTime().toString();
+    
+    // 2. Zeitstempel der letzten erfolgreichen Prüfung auslesen
+    const lastProcessedTime = allProperties['LAST_SHEET_MODIFIED_TIME'] || '';
+    
+    // 3. ABBRUCH, wenn sich die Datei seit dem letzten Lauf nicht verändert hat
+    if (fileLastModified === lastProcessedTime) {
+      Logger.log('ℹ️ Keine Dateiänderung im Google Drive seit der letzten Prüfung. Abbrach, um Ressourcen zu schonen.');
+      return;
+    }
+    
+    Logger.log('🔄 Änderung am Google Sheet erkannt. Öffne Datei für detaillierte Prüfung...');
+    
+    // 4. ERST JETZT DAS SHEET ÖFFNEN, da eine Änderung vorliegt
     const ss = SpreadsheetApp.openById(sheetId);
     const sheet = ss.getSheets()[0];
     const lastRow = sheet.getLastRow();
@@ -499,90 +521,83 @@ function tracklistchanges() {
         };
       }
     }
+    
+    // 5. NEUEN ZEITSTEMPEL SPEICHERN für den nächsten Durchlauf
+    scriptProperties.setProperty('LAST_SHEET_MODIFIED_TIME', fileLastModified);
+
   } catch (e) {
     Logger.log('❌ Fehler beim Einlesen der Tabelle für Tracking: ' + e.message);
     return;
   }
-
-  if (!lastSnapshotRaw) {
-    Logger.log('Kein alter Schnappschuss vorhanden. Erstelle initialen Datenstand...');
-    scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
-    Logger.log('=== TRACKING BEENDET (Initialer Lauf) ===');
-    
-    if (typeof checkAndWelcomeNewMembers === 'function') {
-      checkAndWelcomeNewMembers();
+  
+  // Vorherigen Snapshot laden
+  let previousSnapshot = {};
+  const storedSnapshot = allProperties['MEMBER_LIST_SNAPSHOT'];
+  if (storedSnapshot) {
+    try {
+      previousSnapshot = JSON.parse(storedSnapshot);
+    } catch (e) {
+      Logger.log('⚠️ Fehler beim Parsen des alten Snapshots: ' + e.message);
+      previousSnapshot = {};
     }
-    return;
   }
-
-  const lastSnapshot = JSON.parse(lastSnapshotRaw);
+  
   const addedMembers = [];
   const updatedMembers = [];
-
-  // OPTIMIERUNG 1: Abgleich und direktes Erkennen von Updates & Neuzugängen
+  const removedMembers = [];
+  
+  // 1. Auf neue und aktualisierte Mitglieder prüfen
   for (const id in currentSnapshot) {
     const current = currentSnapshot[id];
-    const last = lastSnapshot[id];
-    current.id = id;
-
-    if (!last) {
+    if (!previousSnapshot[id]) {
       addedMembers.push(current);
     } else {
-      const changedFields = [];
-      const textDetails = [];
-      // Felder dynamisch prüfen statt 4x hartem "if"
-      const fieldsToTrack = { vorname: 'Vorname', nachname: 'Nachname', email: 'E-Mail', mobile: 'Mobil' };
-      for (const [field, label] of Object.entries(fieldsToTrack)) {
-        if (current[field] !== last[field]) {
-          changedFields.push(field);
-          textDetails.push(`${label}: ${last[field] || '-'} -> ${current[field] || '-'}`);
-        }
+      const prev = previousSnapshot[id];
+      if (current.vorname !== prev.vorname || 
+          current.nachname !== prev.nachname || 
+          current.email !== prev.email || 
+          current.mobile !== prev.mobile) {
+        updatedMembers.push({ id: id, old: prev, current: current });
       }
-
-      if (changedFields.length > 0) {
-        updatedMembers.push({
-          id: id,
-          old: last,
-          current: current,
-          changedFields: changedFields,
-          textDetails: textDetails
-        });
-      }
-      
-      // OPTIMIERUNG 2: Gefundene IDs aus dem alten Snapshot löschen.
-      // Alles was am Ende übrig bleibt, wurde aus der Tabelle gelöscht!
-      delete lastSnapshot[id];
     }
   }
-
-  // Was jetzt noch im alten Snapshot ist, wurde entfernt
-  const removedMembers = Object.keys(lastSnapshot).map(id => {
-    const removed = lastSnapshot[id];
-    removed.id = id;
-    return removed;
-  });
-
-  if (addedMembers.length > 0 || removedMembers.length > 0 || updatedMembers.length > 0) {
-    Logger.log(`Änderungen erkannt! Neu: ${addedMembers.length}, Gelöscht: ${removedMembers.length}, Geändert: ${updatedMembers.length}`);
-    sendChangeReportMail(adminEmail, addedMembers, removedMembers, updatedMembers);
+  
+  // 2. Auf gelöschte Mitglieder prüfen
+  for (const id in previousSnapshot) {
+    if (!currentSnapshot[id]) {
+      removedMembers.push(previousSnapshot[id]);
+    }
+  }
+  
+  // Änderungen protokollieren und verarbeiten
+  const hasChanges = addedMembers.length > 0 || updatedMembers.length > 0 || removedMembers.length > 0;
+  
+  if (hasChanges) {
+    Logger.log(`📢 Änderungen festgestellt! Neu: ${addedMembers.length}, Aktualisiert: ${updatedMembers.length}, Gelöscht: ${removedMembers.length}`);
     
-    if (!CONFIG.TRACKING_TEST_MODUS_AKTIV) {
+    // E-Mail Bericht erstellen und senden
+    sendTrackingReportEmail(addedMembers, updatedMembers, removedMembers);
+    
+    // Aktuellen Zustand als neuen Snapshot speichern
+    try {
       scriptProperties.setProperty('MEMBER_LIST_SNAPSHOT', JSON.stringify(currentSnapshot));
-      Logger.log('Der neue Schnappschuss wurde erfolgreich gespeichert.');
-    } else {
-      Logger.log('⚠️ HINWEIS: Im Tracking-Testmodus wird der alte Schnappschuss NICHT überschrieben.');
+      Logger.log('✅ Neuer Mitglieder-Snapshot erfolgreich in den ScriptProperties gespeichert.');
+    } catch (e) {
+      Logger.log('❌ Fehler beim Speichern des Snapshots (evtl. zu groß): ' + e.message);
+    }
+    
+    // Onboarding-Prozess für die neuen Mitglieder anstoßen
+    if (addedMembers.length > 0) {
+      if (typeof checkAndWelcomeNewMembers === 'function') {
+        Logger.log('🚀 Starte Onboarding-System für neue Mitglieder...');
+        checkAndWelcomeNewMembers();
+      } else {
+        Logger.log('⚠️ Warnung: Funktion checkAndWelcomeNewMembers() wurde im Skript nicht gefunden.');
+      }
     }
   } else {
-    Logger.log('Keine Änderungen an der Mitgliederliste festgestellt.');
+    Logger.log('ℹ️ Die Dateninhalte der Mitgliederliste sind identisch zum letzten Stand. Keine Aktion erforderlich.');
   }
-
-  // KETTENREAKTION: Am Ende des Trackings direkt das Onboarding triggern
-  if (typeof checkAndWelcomeNewMembers === 'function') {
-    Logger.log("🚀 Starte automatische Prüfung auf neue Mitglieder ...");
-    checkAndWelcomeNewMembers();
-  }
-
-  Logger.log('=== TRACKING BEENDET ===');
 }
 
 function sendChangeReportMail(adminEmail, added, removed, updated) {
