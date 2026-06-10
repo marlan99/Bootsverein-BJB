@@ -750,7 +750,7 @@ function checkAndWelcomeNewMembers() {
     scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet]));
     Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
-    // 🔥 JETZT MITGLIEDERBERECHTIGUNG AUSFÜHREN: --> Google API unterbindet die automatisierte Rechtevergabe. Daher wird die Funktion auskommentiert
+    // JETZT MITGLIEDERBERECHTIGUNG AUSFÜHREN: --> Google API unterbindet die automatisierte Rechtevergabe. Daher wird die Funktion auskommentiert
 //    if (mailsSentCount > 0 && !isInitialRun) {
 //      Logger.log("⚡ Änderungen an Mitgliedern erkannt. Starte Kalender-Berechtigungen SOFORT...");
 //      ausfuehrenKalenderSynchronisierung();
@@ -1165,7 +1165,7 @@ function sendDailyReservationReminders() {
     const emailMatch = desc.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
     if (emailMatch && emailMatch[1]) {
       const slotName = event.getStartTime().getHours() === 8 ? "Vormittag (08:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
-      let body = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n📅 Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n⏰ Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
+      let body = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n&#128197; Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n&#9200; Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
       GmailApp.sendEmail(emailMatch[1].trim(), `Erinnerung: Deine Boot Buchung für morgen!`, body);
     }
   });
@@ -1275,7 +1275,7 @@ function fetchAndSyncAnleitungPDF() {
 // =============================================================================
 
 function setEarliestBookingDate() {
-  const zielDatum = '01.04.' + new Date().getFullYear();
+  const zielDatum = '01.06.2026';
   PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', zielDatum);
   Logger.log(`Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`);
 }
