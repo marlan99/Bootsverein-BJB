@@ -1,8 +1,6 @@
 /**
  * TestSuiteAndDebug.gs
  * Automatisiertes Testskript & Whitelist-Check für das E-Mail-basierte Reservierungssystem
- * MIT ERWEITERTEM TIMEOUT-SCHUTZ (Europäische Formate in Einzelschritte zerlegt)
- * * ANLEITUNG: Ersetze den gesamten Inhalt deiner TestSuite.gs mit diesem Code.
  */
 
 // ==========================================================================
@@ -67,43 +65,43 @@ function runAllTests() {
       name: 'ID 1,2,5 – Gültige Reservierung & Zusatzinfos',
       config: TEST_CONFIG.RUN_TEST_VALID_RESERVATION,
       exec: () => { cleanupOldTestMails();
-      return testValidReservation(); }
+                    return testValidReservation(); }
     },
     { 
       name: 'ID 3 – Saison-Limit (Max. 1 aktiver Standard-Termin parallel)',
       config: TEST_CONFIG.RUN_TEST_STANDARD_LIMIT,
       exec: () => { cleanupOldTestMails();
-      return testStandardLimit(); }
+                    return testStandardLimit(); }
     },
     { 
       name: 'ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)',
       config: TEST_CONFIG.RUN_TEST_SLOT_TIMES,
       exec: () => { cleanupOldTestMails();
-      return testSlotTimes(); }
+                    return testSlotTimes(); }
     },
     { 
       name: 'ID 9 – Intuitive Fehlermeldung bei Falschformat',
       config: TEST_CONFIG.RUN_TEST_INVALID_FORMAT,
       exec: () => { cleanupOldTestMails();
-      return testInvalidFormat(); }
+                    return testInvalidFormat(); }
     },
     { 
       name: 'ID 6 – Erinnerungsfunktion (E-Mail an Buchenden)',
       config: TEST_CONFIG.RUN_TEST_REMINDER,
       exec: () => { cleanupOldTestMails();
-      return testReminder(); }
+                    return testReminder(); }
     },
     { 
       name: 'ID 10 – Erfolgreiche Stornierung (Frist eingehalten)',
       config: TEST_CONFIG.RUN_TEST_SUCCESSFUL_CANCELLATION,
       exec: () => { cleanupOldTestMails();
-      return testSuccessfulCancellation(); }
+                    return testSuccessfulCancellation(); }
     },
     { 
       name: 'ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)',
       config: TEST_CONFIG.RUN_TEST_REJECTED_CANCELLATION,
       exec: () => { cleanupOldTestMails();
-      return testRejectedCancellation(); }
+                    return testRejectedCancellation(); }
     },
     
     // ID 12: Europäische Datumsformate in 4 Einzelschritte zerlegt, damit der Trigger dazwischenfunken kann
@@ -133,7 +131,7 @@ function runAllTests() {
       name: 'ID 7 – Skalierungstest (Systemstabilität)',
       config: TEST_CONFIG.RUN_SCALABILITY_TEST,
       exec: () => { cleanupOldTestMails();
-      return testScalability(); }
+                    return testScalability(); }
     }
   ];
 
@@ -194,8 +192,7 @@ function runAllTests() {
     Logger.log(logLine);
     emailBody += logLine + '\n';
   });
-  
-  if (typeof CONFIG !== 'undefined' && CONFIG?.ADMIN_EMAIL && totalActive > 0) {
+  if (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_EMAIL && totalActive > 0) {
     MailApp.sendEmail(CONFIG.ADMIN_EMAIL, `Testbericht Reservierungssystem: ${passed}/${totalActive}`, emailBody);
     Logger.log(`\nTestbericht erfolgreich an ${CONFIG.ADMIN_EMAIL} gesendet.`);
   }
@@ -215,6 +212,7 @@ function resetTestSuite() {
   
   // Löscht auch eventuell noch wartende automatische Folge-Trigger
   deleteTrigger('runAllTests');
+  
   Logger.log("🔄 Testsuite erfolgreich zurückgesetzt! Der nächste Start von 'runAllTests' beginnt von vorn.");
 }
 
@@ -230,34 +228,37 @@ function deleteTrigger(functionName) {
   }
 }
 
+
 /* ==========================================================================
    NEUE HILFSFUNKTION FÜR DIE ZERLEGTEN DATUMS-TESTS
    ========================================================================== */
+
 function executeSingleDateFormatTest(item) {
   cleanupOldTestMails();
 
-  const calendar = (typeof CONFIG !== 'undefined' && CONFIG?.CALENDAR_ID)
-    ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID)
-    : CalendarApp.getDefaultCalendar();
+  // WECHSEL ZUM STANDARDKALENDER, FALLS CONFIG.CALENDAR_ID LEER IST
+  const calendar = (typeof CONFIG !== 'undefined' && CONFIG.CALENDAR_ID) ? 
+    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+    
+  // SICHERHEITS-CHECK: Falls der Kalender immer noch null ist (z.B. wegen Tippfehler in der ID)
   if (!calendar) {
-    Logger.log('❌ KRITISCHER FEHLER im Format-Test: Kalender konnte nicht geladen werden.');
+    Logger.log("❌ KRITISCHER FEHLER im Format-Test: Kalender konnte nicht geladen werden. Bitte CALENDAR_ID überprüfen.");
     return {
       name: `ID 12 – Europäisches Format: ${item.type}`,
       passed: false,
-      message: 'Test abgebrochen: Kalender konnte nicht geladen werden.'
+      message: "Test abgebrochen: Kalender konnte nicht geladen werden."
     };
   }
 
-  const myName = getAuthorizedUserData(Session.getActiveUser().getEmail())?.name
-    ?? Session.getActiveUser().getEmail();
+  const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
   const targetDateObj = new Date();
   targetDateObj.setDate(targetDateObj.getDate() + item.daysOut);
-
+  
   // Kalender vorab für diesen Tag reinigen
-  calendar.getEventsForDay(targetDateObj).forEach(e => {
-    if (e.getTitle().includes(myName) || e.getDescription().includes('Format-Test')) {
-      e.deleteEvent();
-    }
+  const existingEvents = calendar.getEventsForDay(targetDateObj);
+  existingEvents.forEach(e => {
+    if (e.getTitle().includes(myName) || e.getDescription().includes('Format-Test')) e.deleteEvent();
   });
   Utilities.sleep(500);
 
@@ -266,35 +267,29 @@ function executeSingleDateFormatTest(item) {
     subject: 'Reservierung',
     body: `Datum: ${formattedDateString}\nSlot: ${item.slot}\nTyp: Standard\nBeschreibung: Europäisches Format-Test ${item.type}`
   });
+  
   labelTestEmails();
   processReservationEmails();
+  Utilities.sleep(2000); 
 
-  // Timing-Problem: Retry statt hartem sleep
-  const event = waitForCalendarEvent(
-    targetDateObj,
-    myName,
-    5,   // maxAttempts
-    2000 // delayMs
-  );
-  // Zusätzlich auf item.type im Description prüfen
-  const matchedEvent = event?.getDescription().includes(item.type) ? event : null;
-
-  if (matchedEvent) {
-    matchedEvent.deleteEvent();
-    Utilities.sleep(500);
+  const events = calendar.getEventsForDay(targetDateObj);
+  const event = events.find(e => e.getTitle().includes(myName) && e.getDescription().includes(item.type));
+  
+  const passed = !!event;
+  if (event) {
+    event.deleteEvent();
+    Utilities.sleep(1500); 
   }
-
+  
   cleanupOldTestMails();
-
-  const passed = !!matchedEvent;
   return {
     name: `ID 12 – Europäisches Format: ${item.type}`,
-    passed,
-    message: passed
-      ? `Format '${formattedDateString}' (${item.desc}) erfolgreich erkannt.`
-      : `Format fehlgeschlagen: '${formattedDateString}'`
+    passed: passed,
+    message: passed ?
+      `Format '${formattedDateString}' (${item.desc}) erfolgreich erkannt.` : `Format fehlgeschlagen: '${formattedDateString}'`
   };
 }
+
 
 /* ==========================================================================
    URSPRÜNGLICHE TESTFÄLLE (UNVERÄNDERT, testEuropeanDateFormats entfernt)
@@ -322,10 +317,15 @@ function testWhitelistCheck() {
     }
     
     const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    let gefunden = false;
     
-    // Optimierte Suche via findIndex statt for-Schleife
-    const gefundenIndex = dataRange.findIndex(row => row[3] && row[3].toString().trim().toLowerCase() === targetEmail);
-    const gefunden = gefundenIndex !== -1;
+    for (let i = 0; i < dataRange.length; i++) {
+      if (!dataRange[i][3]) continue;
+      if (dataRange[i][3].toString().trim().toLowerCase() === targetEmail) {
+        gefunden = true;
+        break;
+      }
+    }
     
     return {
       name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen',
@@ -346,24 +346,28 @@ function testValidReservation() {
     body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Testlauf Hauptfunktion\nAnlass: Automatisierung`
   });
   labelTestEmails();
-  processReservationEmails();
+  processReservationEmails(); 
 
-  const myName = getAuthorizedUserData(Session.getActiveUser().getEmail())?.name
-    ?? Session.getActiveUser().getEmail();
+  const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
+
+  // Verwende hier ebenfalls den Fallback
+  const calendar = (typeof CONFIG !== 'undefined' && CONFIG.CALENDAR_ID) ? 
+    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+
+  if (!calendar) return { name: 'ID 1,2,5 – Gültige Reservierung & Zusatzinfos', passed: false, message: 'Kalender konnte nicht geladen werden.' };
+
   const parts = testDate.split('.');
   const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
+  const events = calendar.getEventsForDay(parsedDate);
+  const event = events.find(e => e.getTitle().includes(myName));
 
-  const event = waitForCalendarEvent(parsedDate, myName);
-  const passed = !!event
-    && event.getDescription().includes('Testlauf Hauptfunktion')
-    && event.getDescription().includes('Automatisierung');
-
+  const passed = !!event && event.getDescription().includes('Testlauf Hauptfunktion') && event.getDescription().includes('Automatisierung');
   return {
     name: 'ID 1,2,5 – Gültige Reservierung & Zusatzinfos',
-    passed,
-    message: passed
-      ? 'Event mit deinem Whitelist-Namen und Zusatzinfos im Kalender gefunden.'
-      : 'Event unvollständig oder nicht erstellt.'
+    passed: passed,
+    message: passed ?
+      'Event mit deinem Whitelist-Namen und Zusatzinfos im Kalender gefunden.' : 'Event unvollständig oder nicht erstellt.'
   };
 }
 
@@ -378,7 +382,7 @@ function testStandardLimit() {
   labelTestEmails();
   processReservationEmails();
 
-  Utilities.sleep(1000);
+  Utilities.sleep(2000);
   const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
   let passed = false;
   if (labelAbgelehnt) {
@@ -399,23 +403,30 @@ function testSlotTimes() {
   createTestEmail({ body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard` });
   labelTestEmails();
   processReservationEmails();
+  const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
 
-  const myName = getAuthorizedUserData(Session.getActiveUser().getEmail())?.name
-    ?? Session.getActiveUser().getEmail();
+  const calendar = (typeof CONFIG !== 'undefined' && CONFIG.CALENDAR_ID) ? 
+    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+
+  if (!calendar) return { name: 'ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)', passed: false, message: 'Kalender konnte nicht geladen werden.' };
+
   const parts = testDate.split('.');
   const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
-
-  const event = waitForCalendarEvent(parsedDate, myName);
-  const passed = !!event
-    && event.getStartTime().getHours() === 8
-    && event.getEndTime().getHours() === 14;
+  const events = calendar.getEventsForDay(parsedDate);
+  const event = events.find(e => e.getTitle().includes(myName));
+  let passed = false;
+  if (event) {
+    const startHour = event.getStartTime().getHours();
+    const endHour = event.getEndTime().getHours();
+    if (startHour === 8 && endHour === 14) { passed = true; }
+  }
 
   return {
     name: 'ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)',
-    passed,
-    message: passed
-      ? 'Uhrzeit für Vormittags-Slot exakt gesetzt.'
-      : 'Uhrzeiten weichen vom Konzept ab.'
+    passed: passed,
+    message: passed ?
+      'Uhrzeit für Vormittags-Slot exakt gesetzt.' : 'Uhrzeiten weichen vom Konzept ab.'
   };
 }
 
@@ -427,7 +438,7 @@ function testInvalidFormat() {
   labelTestEmails();
   processReservationEmails();
 
-  Utilities.sleep(1000);
+  Utilities.sleep(2000);
   const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
   const passed = labelAbgelehnt ? labelAbgelehnt.getThreads().length > 0 : false;
   return {
@@ -447,7 +458,7 @@ function testReminder() {
   processReservationEmails(); 
 
   sendDailyReservationReminders();
-  Utilities.sleep(1000);
+  Utilities.sleep(3500);
   
   const threads = GmailApp.search(`subject:"Erinnerung: Deine Boot Buchung für morgen!" to:me`);
   const passed = threads.length > 0;
@@ -470,24 +481,27 @@ function testSuccessfulCancellation() {
   });
   labelTestEmails();
   processReservationEmails(); 
-  Utilities.sleep(1000); // ← bleibt hier sinnvoll, da wir auf Abwesenheit prüfen
+  Utilities.sleep(2000);
 
-  const myName = getAuthorizedUserData(Session.getActiveUser().getEmail())?.name
-    ?? Session.getActiveUser().getEmail();
+  const myProfile = getAuthorizedUserData(Session.getActiveUser().getEmail());
+  const myName = myProfile ? myProfile.name : Session.getActiveUser().getEmail();
+  
+  const calendar = (typeof CONFIG !== 'undefined' && CONFIG.CALENDAR_ID) ? 
+    CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+
+  if (!calendar) return { name: 'ID 10 – Erfolgreiche Stornierung (Frist eingehalten)', passed: false, message: 'Kalender konnte nicht geladen werden.' };
 
   const parts = targetDate.split('.');
   const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
-
-  // Kurz warten, dann prüfen ob Event wirklich weg ist (3 Versuche reichen)
-  let event = waitForCalendarEvent(parsedDate, myName, 3, 1000);
-  const passed = !event; // Test besteht, wenn KEIN Event mehr da ist
-
+  const events = calendar.getEventsForDay(parsedDate);
+  const event = events.find(e => e.getTitle().includes(myName));
+  
+  const passed = !event;
   return {
     name: 'ID 10 – Erfolgreiche Stornierung (Frist eingehalten)',
-    passed,
-    message: passed
-      ? 'Der Termin wurde nach der Stornierungsanfrage erfolgreich aus dem Kalender gelöscht.'
-      : 'Der Termin existiert trotz Stornierung weiterhin im Kalender.'
+    passed: passed,
+    message: passed ?
+      'Der Termin wurde nach der Stornierungsanfrage erfolgreich aus dem Kalender gelöscht.' : 'Der Termin existiert trotz Stornierung weiterhin im Kalender.'
   };
 }
 
@@ -502,7 +516,7 @@ function testRejectedCancellation() {
   });
   labelTestEmails();
   processReservationEmails();
-  Utilities.sleep(1000);
+  Utilities.sleep(2000);
   
   const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
   const passed = labelAbgelehnt ? labelAbgelehnt.getThreads().length > 0 : false;
@@ -511,7 +525,7 @@ function testRejectedCancellation() {
     passed: passed,
     message: passed ?
       'Kurzfristige Stornierung wurde richtigerweise blockiert und die Anfrage zu "Abgelehnt" verschoben.'
-      : 'Die Stornierung wurde trotz verletzter Frist durchgeführt oder nicht korrekt einsortiert.'
+    : 'Die Stornierung wurde trotz verletzter Frist durchgeführt oder nicht korrekt einsortiert.'
   };
 }
 
@@ -528,12 +542,16 @@ function testScalability() {
   processReservationEmails();
   const processEnd = new Date();
   const durationInSeconds = (processEnd - processStart) / 1000;
-  const calendar = (typeof CONFIG !== 'undefined' && CONFIG?.CALENDAR_ID) ? 
+
+  const calendar = (typeof CONFIG !== 'undefined' && CONFIG.CALENDAR_ID) ? 
     CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+
   if (!calendar) return { name: 'ID 7 – Skalierungstest (Systemstabilität)', passed: false, message: 'Kalender konnte nicht geladen werden.' };
+
   const maxDateStr = getFutureDate(100, 'DOT_LEAD');
   const parts = maxDateStr.split('.');
   const endDate = new Date(parts[2], parts[1] - 1, parts[0]);
+  
   const allEvents = calendar.getEvents(startTime, endDate);
   const loadEventsCount = allEvents.filter(e => e.getDescription().includes('Lasttest')).length;
   const passed = durationInSeconds < 60;
@@ -545,8 +563,9 @@ function testScalability() {
   };
 }
 
+
 /* ==========================================================================
-   URSPRÜNGLICHE HILFSFUNKTIONEN & DEBUG-SKRIPT (STRUKTURELL BEREINIGT)
+   URSPRÜNGLICHE HILFSFUNKTIONEN & DEBUG-SKRIPT (UNVERÄNDERT)
    ========================================================================== */
 
 function getFutureDate(days, format) {
@@ -573,8 +592,8 @@ function createTestEmail({subject = 'Reservierung', body}) {
 }
 
 function labelTestEmails() {
-  Utilities.sleep(1000);
-  const threads = GmailApp.search('is:unread from:me (subject:"Reservierung" OR subject:"Stornierung")');
+  Utilities.sleep(3500);
+  const threads = GmailApp.search('is:unread from:me (subject:"Reservierung" OR subject:"Stornierung" OR subject:"Absage")');
   const label = GmailApp.getUserLabelByName("Reservierung/Neu");
   if (label && threads.length > 0) {
     label.addToThreads(threads);
@@ -590,7 +609,7 @@ function cleanupOldTestMails() {
   let labelArchiv = GmailApp.getUserLabelByName(archivLabelName);
   if (!labelArchiv) { labelArchiv = GmailApp.createLabel(archivLabelName); }
   
-  const threads = GmailApp.search('from:me "Reservierung" OR "Stornierung"');
+  const threads = GmailApp.search('from:me "Reservierung" OR "stornierung" OR "Buchung" OR "Absage"');
   threads.forEach(thread => {
     if(labelNeu) labelNeu.removeFromThread(thread);
     if(labelErledigt) labelErledigt.removeFromThread(thread);
@@ -600,9 +619,10 @@ function cleanupOldTestMails() {
     thread.moveToArchive();
     thread.markRead();
   });
+
   try {
     // WECHSEL ZUM STANDARDKALENDER, FALLS CONFIG.CALENDAR_ID LEER IST
-    const calendar = (typeof CONFIG !== 'undefined' && CONFIG?.CALENDAR_ID) ?
+    const calendar = (typeof CONFIG !== 'undefined' && CONFIG.CALENDAR_ID) ? 
       CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
       
     // SICHERHEITS-CHECK: Falls der Kalender immer noch null ist
@@ -611,8 +631,7 @@ function cleanupOldTestMails() {
       return; // Beendet den Block sauber, statt abzustürzen
     }
 
-    const start = new Date();
-    start.setHours(0,0,0,0);
+    const start = new Date(); start.setHours(0,0,0,0);
     const end = new Date();
     end.setDate(start.getDate() + 365);
     
@@ -627,7 +646,7 @@ function cleanupOldTestMails() {
   } catch(e) {
     Logger.log("   -> Hinweis bei Kalenderbereinigung: " + e.message);
   }
-  Utilities.sleep(1000);
+  Utilities.sleep(2000);
 }
 
 /**
@@ -664,48 +683,32 @@ function debugSpecificWhitelistEmail() {
   Logger.log(`Untersuchtes Tabellenblatt: "${sheet.getName()}"`); 
   Logger.log("--- Start Tabellen-Scan ---");
   
-  // Optimierte Suche via findIndex statt for-Schleife
-  const index = dataRange.findIndex(row => row[3] && row[3].toString().trim().toLowerCase() === targetEmail);
+  let gefunden = false;
+  for (let i = 0; i < dataRange.length; i++) {
+    const row = dataRange[i];
+    if (!row[3]) continue;
+    if (row[3].toString().trim().toLowerCase() === targetEmail) {
+      Logger.log(`✅ MATCH GEFUNDEN in Zeile ${i + 2}!`);
+      const id = row[0] ? row[0].toString().trim() : 'Keine ID';
+      const vorname = row[1] ? row[1].toString().trim() : '';
+      const nachname = row[2] ? row[2].toString().trim() : '';
+      
+      let vollerName = `${vorname} ${nachname}`.trim();
+      if (!vollerName) vollerName = targetEmail;
+      const mobileRaw = row[4] ? row[4].toString().trim() : '';
+      const mobile = mobileRaw !== '' ? mobileRaw : 'Nicht hinterlegt';
+      Logger.log(`   -> Extrahierte ID:       "${id}"`);
+      Logger.log(`   -> Vorname (Rohdaten):   "${vorname}"`);
+      Logger.log(`   -> Nachname (Rohdaten):  "${nachname}"`);
+      Logger.log(`   -> Generierter Name:     "${vollerName}"`);
+      Logger.log(`   -> Mobilnummer:          "${mobile}"`);
+      
+      gefunden = true;
+      break;
+    }
+  }
   
-  if (index !== -1) {
-    const row = dataRange[index];
-    Logger.log(`✅ MATCH GEFUNDEN in Zeile ${index + 2}!`);
-    const id = row[0] ? row[0].toString().trim() : 'Keine ID';
-    const vorname = row[1] ? row[1].toString().trim() : '';
-    const nachname = row[2] ? row[2].toString().trim() : '';
-    
-    let vollerName = `${vorname} ${nachname}`.trim();
-    if (!vollerName) vollerName = targetEmail;
-    const mobileRaw = row[4] ? row[4].toString().trim() : '';
-    const mobile = mobileRaw !== '' ? mobileRaw : 'Nicht hinterlegt';
-    Logger.log(`   -> Extrahierte ID:       "${id}"`);
-    Logger.log(`   -> Vorname (Rohdaten):   "${vorname}"`);
-    Logger.log(`   -> Nachname (Rohdaten):  "${nachname}"`);
-    Logger.log(`   -> Generierter Name:     "${vollerName}"`);
-    Logger.log(`   -> Mobilnummer:          "${mobile}"`);
-  } else {
+  if (!gefunden) {
     Logger.log(`❌ FEHLER: Die Adresse "${targetEmail}" wurde in der Whitelist nicht gefunden.`);
   }
-}
-
-/**
- * Wartet auf einen Kalender-Event mit Retry-Logik.
- * @param {Date} date - Das Datum für getEventsForDay
- * @param {string} titleFragment - Substring der im Titel gesucht wird
- * @param {number} maxAttempts - Anzahl Versuche (default 5)
- * @param {number} delayMs - Pause zwischen Versuchen in ms (default 2000)
- * @returns {GoogleAppsScript.Calendar.CalendarEvent|null}
- */
-function waitForCalendarEvent(date, titleFragment, maxAttempts = 5, delayMs = 2000) {
-  const calendar = (typeof CONFIG !== 'undefined' && CONFIG?.CALENDAR_ID)
-    ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID)
-    : CalendarApp.getDefaultCalendar();
-  if (!calendar) return null;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const event = calendar.getEventsForDay(date).find(e => e.getTitle().includes(titleFragment));
-    if (event) return event;
-    if (attempt < maxAttempts) Utilities.sleep(delayMs);
-  }
-  return null;
 }
