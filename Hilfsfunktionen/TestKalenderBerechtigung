@@ -1,0 +1,56 @@
+/**
+ * Korrigiertes Test-Skript unter Verwendung der erweiterten Calendar-API (ACL).
+ * Stelle sicher, dass unter "Dienste" (links im Editor) "Google Calendar API" aktiv ist!
+ */
+function testKalenderBerechtigung() {
+  // 1. EINSTELLUNGEN: Trage hier deine Kalender-ID ein
+  // (Falls leer, wird der primäre Kalender deines Kontos genutzt)
+  const KALENDER_ID = ''; 
+  const TEST_EMAIL = 'nicole.landolt75@gmail.com';
+  
+  Logger.log('====================================================');
+  Logger.log('🚀 STARTE ERWEITERTEN BERECHTIGUNGS-TEST (ACL)');
+  Logger.log('====================================================');
+  
+  // 2. Kalender-ID bestimmen
+  let realCalendarId = KALENDER_ID.trim();
+  if (!realCalendarId) {
+    realCalendarId = 'primary';
+    Logger.log('ℹ️ Keine Kalender-ID angegeben. Verwende "primary" (dein Hauptkalender).');
+  }
+  
+  // E-Mail-Adresse säubern
+  const bereinigteEmail = TEST_EMAIL.toString().trim().toLowerCase().replace(/[\u00a0\s\r\n]+/g, '');
+  Logger.log('Test für Kalender: ' + realCalendarId);
+  Logger.log('Test für Adresse:  "' + bereinigteEmail + '"');
+  
+  // 3. API Aufruf ausführen
+  try {
+    Logger.log('Rufe Calendar.Acl.insert() auf...');
+    
+    const res = Calendar.Acl.insert({
+      role: 'editor',
+      scope: {
+        type: 'user',
+        value: bereinigteEmail
+      }
+    }, realCalendarId);
+    
+    Logger.log('🎉 ERFOLG! Die API hat die Rechte vergeben.');
+    Logger.log('Rückgabe-ID der Regel: ' + (res ? res.id : 'Keine ID erhalten'));
+    
+  } catch (e) {
+    Logger.log('❌ API-FEHLER ABGEFANGEN:');
+    Logger.log('Fehlermeldung: ' + e.message);
+    
+    if (e.message.includes('Bad Request')) {
+      Logger.log('\n--- DIAGNOSE BEI "BAD REQUEST" ---');
+      Logger.log('Google verweigert diesen API-Aufruf strikt.');
+      Logger.log('Da das Konto existiert, liegt es meistens an Folgendem:');
+      Logger.log('1. Du führst das Skript von einem Google Workspace-Konto (Firmenkonto/Vereinskonto mit eigener Domain) aus.');
+      Logger.log('   -> Workspace verbietet standardmäßig das Teilen von Kalendern nach AUẞEN per API.');
+      Logger.log('2. Die Kalender-ID ist nicht exakt korrekt, oder dein Admin-Konto hat selbst nicht das Recht, Berechtigungen auf diesem Kalender zu verwalten.');
+    }
+  }
+  Logger.log('====================================================');
+}
