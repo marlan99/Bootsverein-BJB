@@ -576,7 +576,7 @@ function tracklistchanges() {
     Logger.log(`📢 Änderungen festgestellt! Neu: ${addedMembers.length}, Aktualisiert: ${updatedMembers.length}, Gelöscht: ${removedMembers.length}`);
     
     // E-Mail Bericht erstellen und senden
-    sendTrackingReportEmail(addedMembers, updatedMembers, removedMembers);
+    sendChangeReportMail(CONFIG.ADMIN_EMAIL, addedMembers, removedMembers, updatedMembers);
     
     // Aktuellen Zustand als neuen Snapshot speichern
     try {
