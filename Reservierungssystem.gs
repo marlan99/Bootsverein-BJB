@@ -1362,13 +1362,57 @@ function resetTrackingSnapshot() {
   Logger.log('Tracking-Schnappschuss wurde erfolgreich gelöscht.');
 }
 
-// Helper zum Parsen europäischer Daten (falls im restlichen Skript benötigt)
+// Helper zum Parsen europäischer Daten (Zahlenformate + deutsche Monatsnamen)
 function parseEuropeanDate(dateStr) {
-  const parts = dateStr.split(/[./-]/);
-  if (parts.length === 3) {
-    return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+  if (!dateStr) return new Date(NaN);
+
+  const monateDE = {
+    'januar': 0, 'jan': 0,
+    'februar': 1, 'feb': 1,
+    'märz': 2, 'maerz': 2, 'mrz': 2,
+    'april': 3, 'apr': 3,
+    'mai': 4,
+    'juni': 5, 'jun': 5,
+    'juli': 6, 'jul': 6,
+    'august': 7, 'aug': 7,
+    'september': 8, 'sep': 8, 'sept': 8,
+    'oktober': 9, 'okt': 9,
+    'november': 10, 'nov': 10,
+    'dezember': 11, 'dez': 11
+  };
+
+  const input = dateStr.trim().toLowerCase();
+
+  // Format: "5. Juni 2026" oder "5 Juni 2026" (mit/ohne Punkt, auch Abkürzungen)
+  const textMatch = input.match(/^(\d{1,2})\.?\s+([a-zäöüß]+)\.?\s+(\d{4})$/);
+  if (textMatch) {
+    const day = parseInt(textMatch[1], 10);
+    const month = monateDE[textMatch[2]];
+    const year = parseInt(textMatch[3], 10);
+    if (month === undefined) return new Date(NaN);
+    return buildAndVerifyDate(year, month, day);
   }
-  return new Date(dateStr);
+
+  // Format: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY (auch einstellig, z.B. 5.6.2026)
+  const numericMatch = input.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+  if (numericMatch) {
+    const day = parseInt(numericMatch[1], 10);
+    const month = parseInt(numericMatch[2], 10) - 1;
+    const year = parseInt(numericMatch[3], 10);
+    return buildAndVerifyDate(year, month, day);
+  }
+
+  return new Date(NaN);
+}
+
+// Stellt sicher, dass z.B. "31.04.2026" nicht stillschweigend zum 1. Mai wird,
+// sondern als ungültiges Datum erkannt wird
+function buildAndVerifyDate(year, month, day) {
+  const date = new Date(year, month, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
+    return new Date(NaN);
+  }
+  return date;
 }
 
 // Helper zum Formatieren von Daten (DD.MM.YYYY)
