@@ -1007,7 +1007,7 @@ function executeCancellation(data, userId, thread, message) {
   const memberData = getAuthorizedUserData(userId);
   
   if (!memberData) {
-    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `❌ Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, { replyTo: CONFIG.ADMIN_EMAIL });
     return false;
   }
   
@@ -1042,7 +1042,7 @@ function executeCancellation(data, userId, thread, message) {
 
     userEvent.deleteEvent();
     // OPTIMIERUNG 1: Tippfehler im Betreff korrigiert ("Bestätigung" statt "BestBTigung")
-    GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `✅ Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
     return true;
   } else {
     GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, { replyTo: CONFIG.ADMIN_EMAIL });
@@ -1210,10 +1210,35 @@ function sendDailyReservationReminders() {
   events.forEach(event => {
     const desc = event.getDescription() || "";
     const emailMatch = desc.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+    
     if (emailMatch && emailMatch[1]) {
       const slotName = event.getStartTime().getHours() === 8 ? "Vormittag (08:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
-      let body = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n&#128197; Datum: ${formatDateDDMMYYYY(tomorrowStart)}\n&#9200; Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
-      GmailApp.sendEmail(emailMatch[1].trim(), `Erinnerung: Deine Boot Buchung für morgen!`, body);
+      const empfaengerEmail = emailMatch[1].trim();
+      const terminDatum = formatDateDDMMYYYY(tomorrowStart);
+
+      // 1. Definiere den Inhalt als echtes HTML für moderne Mail-Clients
+      let htmlInhalt = `
+        <p>Hallo!</p>
+        <p>Automatische Erinnerung für deine Reservierung morgen:</p>
+        <ul>
+          <li>&#128197; <strong>Datum:</strong> ${terminDatum}</li>
+          <li>&#9200; <strong>Slot:</strong> ${slotName}</li>
+        </ul>
+        <p>Viel Spass mit dem Boot!</p>
+      `;
+
+      // 2. Erstelle einen einfachen Text-Fallback (falls ein Client kein HTML unterstützt)
+      let textFallback = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n📅 Datum: ${terminDatum}\n⏰ Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
+
+      // 3. Sende die E-Mail mit der htmlBody-Option an das Mitglied
+      GmailApp.sendEmail(
+        empfaengerEmail, 
+        `Erinnerung: Deine Boot Buchung für morgen!`, 
+        textFallback, 
+        {
+          htmlBody: htmlInhalt
+        }
+      );
     }
   });
 }
