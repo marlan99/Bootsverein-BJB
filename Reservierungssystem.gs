@@ -1095,9 +1095,20 @@ function sendRejectionEmail(to, reason, thread) {
   const subject = 'Buchung abgelehnt';
   const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\n❌ Grund: ${reason}`;
   try {
+    // 1. Versuch: Direkt senden
     GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
   } catch (error) {
-    if (thread) thread.createDraftReply(`❌ Ablehnungsgrund: ${reason}`);
+    // 2. Versuch: Wenn Senden fehlschlägt, als Draft speichern
+    if (thread) {
+      // Wenn ein Thread existiert, antworte im Thread (mit angepasstem Betreff & Admin-Reply)
+      thread.createDraftReply(body, {
+        replyTo: CONFIG.ADMIN_EMAIL,
+        subject: subject
+      });
+    } else {
+      // Falls kein Thread existiert, erstelle einen komplett neuen Entwurf
+      GmailApp.createDraft(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
+    }
   }
 }
 
