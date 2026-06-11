@@ -1003,11 +1003,37 @@ function ausfuehrenKalenderSynchronisierung() {
 // 5. HILFSFUNKTIONEN & STORNIERUNGSLOGIK - OPTIMIERT
 // =============================================================================
 
+// Sendet eine Ablehnungs-/Fehlermail im Rahmen einer Stornierung. Schlägt der direkte
+// Versand fehl (z.B. wegen Google-Limitierungen), wird stattdessen ein Entwurf
+// im Thread abgelegt – analog zu sendRejectionEmail(). So wirft executeCancellation()
+// in diesen Fällen keine Exception mehr und der Thread wird korrekt mit
+// 'ABGELEHNT' bzw. dem Label 'Reservierung/Abgelehnt' verarbeitet.
+function sendCancellationRejectionEmail(to, subject, body, thread) {
+  try {
+    GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
+  } catch (error) {
+    Logger.log(`⚠️ Direktes Senden fehlgeschlagen, erstelle Entwurf... Fehler: ${error.message}`);
+    if (thread) {
+      try {
+        thread.createDraftReply(body, { replyTo: CONFIG.ADMIN_EMAIL, subject: subject });
+      } catch (draftError) {
+        Logger.log(`❌ Fehler beim Erstellen des Entwurfs: ${draftError.message}`);
+      }
+    } else {
+      try {
+        GmailApp.createDraft(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
+      } catch (draftError) {
+        Logger.log(`❌ Fehler beim Erstellen des Entwurfs: ${draftError.message}`);
+      }
+    }
+  }
+}
+
 function executeCancellation(data, userId, thread, message) {
   const memberData = getAuthorizedUserData(userId);
   
   if (!memberData) {
-    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `❌ Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    sendCancellationRejectionEmail(userId, 'Löschen der Buchung abgelehnt', `❌ Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
     return false;
   }
   
@@ -1022,7 +1048,7 @@ function executeCancellation(data, userId, thread, message) {
   const stornierungsFrist = new Date(terminStartZeit.getTime() - (24 * 60 * 60 * 1000));
   if (jetzt > stornierungsFrist) {
     let fehlerGrund = terminStartZeit < jetzt ? 'Der Termin liegt in der Vergangenheit.' : `Die Frist für eine automatische Stornierung (24h vor Beginn) ist abgelaufen.`;
-    GmailApp.sendEmail(userId, 'Löschen der Buchung abgelehnt', `Hallo ${data.name},\n\n❌ Grund: ${fehlerGrund}`, { replyTo: CONFIG.ADMIN_EMAIL });
+    sendCancellationRejectionEmail(userId, 'Löschen der Buchung abgelehnt', `Hallo ${data.name},\n\n❌ Grund: ${fehlerGrund}`, thread);
     return false; 
   }
 
@@ -1036,16 +1062,23 @@ function executeCancellation(data, userId, thread, message) {
 
   if (userEvent) {
     if (userEvent.getTitle().toUpperCase().includes('JOKER')) {
-      GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, { replyTo: CONFIG.ADMIN_EMAIL });
+      sendCancellationRejectionEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, thread);
       return false;
     }
 
     userEvent.deleteEvent();
     // OPTIMIERUNG 1: Tippfehler im Betreff korrigiert ("Bestätigung" statt "BestBTigung")
-    GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `✅ Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    // Das Senden der Bestätigungsmail wird separat abgesichert: Schlägt der Versand
+    // (z.B. wegen Google-Limitierungen) fehl, soll die Stornierung trotzdem als
+    // erfolgreich gelten, da der Kalendereintrag bereits entfernt wurde.
+    try {
+      GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `✅ Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    } catch (mailError) {
+      Logger.log(`⚠️ Kalendereintrag wurde storniert, aber Bestätigungsmail konnte nicht gesendet werden: ${mailError.message}`);
+    }
     return true;
   } else {
-    GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    sendCancellationRejectionEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, thread);
     return false;
   }
 }
