@@ -1212,7 +1212,7 @@ function sendDailyReservationReminders() {
     const emailMatch = desc.match(/Kontakt:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
     
     if (emailMatch && emailMatch[1]) {
-      const slotName = event.getStartTime().getHours() === 8 ? "Vormittag (08:00 - 14:00)" : "Nachmittag (14:00 - 20:00)";
+      const slotName = getSlotLabelForEvent(event);
       const empfaengerEmail = emailMatch[1].trim();
       const terminDatum = formatDateDDMMYYYY(tomorrowStart);
 
@@ -1418,6 +1418,24 @@ function buildAndVerifyDate(year, month, day) {
 // Helper zum Formatieren von Daten (DD.MM.YYYY)
 function formatDateDDMMYYYY(date) {
   return Utilities.formatDate(date, Session.getScriptTimeZone(), "dd.MM.yyyy");
+}
+
+// Ermittelt für ein Kalender-Event den passenden Slot-Namen samt Zeitfenster
+// dynamisch anhand der Startzeit aus CONFIG.SLOT_VORMITTAG / CONFIG.SLOT_NACHMITTAG.
+// So bleibt z.B. sendDailyReservationReminders() automatisch korrekt,
+// auch wenn die Slot-Zeiten in CONFIG geändert werden.
+function getSlotLabelForEvent(event) {
+  const startTime = event.getStartTime();
+  const eventHour = startTime.getHours();
+  const eventMinute = startTime.getMinutes();
+
+  const [vormittagH, vormittagM] = CONFIG.SLOT_VORMITTAG.start.split(':').map(Number);
+
+  const isVormittag = (eventHour === vormittagH && eventMinute === vormittagM);
+  const slot = isVormittag ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
+  const slotName = isVormittag ? 'Vormittag' : 'Nachmittag';
+
+  return `${slotName} (${slot.start} - ${slot.end})`;
 }
 
 function setupTriggers() {
