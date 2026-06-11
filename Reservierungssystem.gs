@@ -1097,7 +1097,7 @@ function sendRejectionEmail(to, reason, thread) {
   try {
     GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
   } catch (error) {
-    if (thread) thread.createDraftReply(`Ablehnungsgrund: ${reason}`);
+    if (thread) thread.createDraftReply(`❌ Ablehnungsgrund: ${reason}`);
   }
 }
 
