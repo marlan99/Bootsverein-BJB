@@ -1036,7 +1036,7 @@ function executeCancellation(data, userId, thread, message) {
 
   if (userEvent) {
     if (userEvent.getTitle().toUpperCase().includes('JOKER')) {
-      GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, { replyTo: CONFIG.ADMIN_EMAIL });
+      GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, { replyTo: CONFIG.ADMIN_EMAIL });
       return false;
     }
 
@@ -1045,7 +1045,7 @@ function executeCancellation(data, userId, thread, message) {
     GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `✅ Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
     return true;
   } else {
-    GmailApp.sendEmail(userId, 'Stornierung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, { replyTo: CONFIG.ADMIN_EMAIL });
+    GmailApp.sendEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, { replyTo: CONFIG.ADMIN_EMAIL });
     return false;
   }
 }
