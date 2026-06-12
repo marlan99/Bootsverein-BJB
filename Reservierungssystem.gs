@@ -28,7 +28,7 @@ function processReservationEmails() {
 
   // OPTIMIERUNG 1: Kombinierte Suchanfrage spart API-Quota und verhindert Doppelverarbeitung
   const emailThreads = GmailApp.search('in:inbox (subject:"Reservierung" OR subject:"Stornierung")');
-  Logger.log(`Gefundene relevante Threads im Posteingang: ${emailThreads.length}`);
+  Logger.log(`✅ Gefundene relevante Threads im Posteingang: ${emailThreads.length}`);
   
   // OPTIMIERUNG 2: Kalender-Instanz EINMALIG holen und wiederverwenden
   const calendar = CONFIG.CALENDAR_ID ?
@@ -108,16 +108,26 @@ function processSingleEmail(message, thread, calendar) {
   const subject = message.getSubject().toLowerCase();
   const body = message.getPlainBody();
   const data = parseEmailTemplate(body);
-  
+
   // Optimierung 3: Fehlerhaften Zugriff CONFIG.CONFIG? korrigiert auf CONFIG.GMAIL_LABEL
   const labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL);
 
+  // Stellvertreter-Buchung: Wenn die Mail vom Admin selbst stammt (z.B. eine
+  // weitergeleitete Formular-Benachrichtigung) UND der Mailtext ein gültiges
+  // "Absender:"-Feld enthält, wird diese Adresse als eigentlicher Antragsteller
+  // (userId) verwendet. Bei Mails von anderen Absendern wird das Feld ignoriert,
+  // damit niemand eine fremde Identität vorgeben kann.
+  let userId = sender;
+  if (sender.toLowerCase() === CONFIG.ADMIN_EMAIL.toLowerCase() && data.absenderEmail) {
+    userId = data.absenderEmail;
+    console.info(`ℹ️ Stellvertreter-Buchung: Antrag im Auftrag von ${userId} (weitergeleitet durch Admin ${sender}).`);
+  }
+
   if (!data.valid) {
-    sendRejectionEmail(sender, data.error, thread);
+    sendRejectionEmail(userId, data.error, thread);
     return 'ABGELEHNT';
   }
 
-  const userId = sender;
   // Erleichterte Erkennung von Stornierungen
   if (subject.includes('stornierung') || subject.includes('absage')) {
     const cancellationSuccess = executeCancellation(data, userId, thread, message);
@@ -127,17 +137,17 @@ function processSingleEmail(message, thread, calendar) {
   // Kalender wird hier direkt übergeben
   const validation = validateRequest(data, userId, sender, calendar);
   if (!validation.valid) {
-    sendRejectionEmail(sender, validation.error, thread);
+    sendRejectionEmail(userId, validation.error, thread);
     return 'ABGELEHNT';
   }
 
   // Kalender wird hier direkt übergeben
   const event = createCalendarEvent(data, userId, calendar);
   if (event) {
-    sendConfirmationEmail(sender, event, data, thread);
+    sendConfirmationEmail(userId, event, data, thread);
     return 'ERLEDIGT';
   } else {
-    sendRejectionEmail(sender, 'Fehler beim Erstellen des Termins im Google Kalender.', thread);
+    sendRejectionEmail(userId, 'Fehler beim Erstellen des Termins im Google Kalender.', thread);
     return 'ABGELEHNT';
   }
 }
@@ -152,7 +162,8 @@ function parseEmailTemplate(body) {
     'Slot': 'slot',
     'Typ': 'type',
     'Beschreibung': 'description',
-    'Anlass': 'occasion'
+    'Anlass': 'occasion',
+    'Absender': 'absenderRaw'
   };
   lines.forEach(line => {
     for (const [key, prop] of Object.entries(fields)) {
@@ -161,6 +172,16 @@ function parseEmailTemplate(body) {
       }
     }
   });
+
+  // Das "Absender:"-Feld kann als reine E-Mail-Adresse oder als Markdown-Link
+  // ([adresse](mailto:adresse)) vorliegen, z.B. aus der Formular-Benachrichtigung.
+  data.absenderEmail = null;
+  if (data.absenderRaw) {
+    const emailMatch = data.absenderRaw.match(/[\w.-]+@[\w.-]+\.[\w.-]+/);
+    if (emailMatch) {
+      data.absenderEmail = emailMatch[0].toLowerCase();
+    }
+  }
   if (!data.date || !data.slot) {
     data.error = 'Fehlende Pflichtfelder im Text: "Datum:" oder "Slot:" konnten nicht extrahiert werden.';
     return data;
@@ -321,7 +342,7 @@ function createCalendarEvent(data, userId, calendar) {
 
     return event;
   } catch (e) {
-    Logger.log('Fehler beim Erstellen des Kalendereintrags: ' + e);
+    Logger.log('❌ Fehler beim Erstellen des Kalendereintrags: ' + e);
     return null;
   }
 }
@@ -342,7 +363,7 @@ function importExcelToSheets() {
   const searchQuery = `subject:"${CONFIG.EXCEL_SUBJECT}" is:unread has:attachment`;
   const threads = GmailApp.search(searchQuery);
   
-  Logger.log(`Prüfe Posteingang auf neue Excel-Listen... Gefunden: ${threads.length}`);
+  Logger.log(`✅ Prüfe Posteingang auf neue Excel-Listen... Gefunden: ${threads.length}`);
   const adminEmailLower = adminEmail.toLowerCase();
   const targetLabel = GmailApp.getUserLabelByName(CONFIG.EXCEL_TARGET_LABEL) || createGmailLabelStructure(CONFIG.EXCEL_TARGET_LABEL);
   const errorLabel = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
@@ -365,7 +386,7 @@ function importExcelToSheets() {
       
       // Berechtigungsprüfung via String-Vergleich
       if (!sender.includes(adminEmailLower)) {
-        Logger.log(`WARNUNG: E-Mail von unbefugtem Absender blockiert: ${sender}`);
+        Logger.log(`⚠️ WARNUNG: E-Mail von unbefugtem Absender blockiert: ${sender}`);
         if (errorLabel) thread.addLabel(errorLabel);
         continue;
       }
@@ -378,7 +399,7 @@ function importExcelToSheets() {
         
         if (!isExcel) continue;
 
-        Logger.log(`Verarbeite Excel-Anhang: ${attachment.getName()}`);
+        Logger.log(`✅ Verarbeite Excel-Anhang: ${attachment.getName()}`);
         const fileBlob = attachment.copyBlob();
         let tempSheetFile = null;
         
@@ -428,7 +449,7 @@ function importExcelToSheets() {
             try { 
               DriveApp.getFileById(tempSheetFile.id).setTrashed(true);
             } catch(err) {
-              Logger.log(`Hinweis beim Aufräumen: Temp-Datei konnte nicht gelöscht werden: ${err.message}`);
+              Logger.log(`⚠️ Hinweis beim Aufräumen: Temp-Datei konnte nicht gelöscht werden: ${err.message}`);
             }
           }
         }
@@ -458,7 +479,7 @@ function importExcelToSheets() {
     Logger.log("🔎 Starte routinemässige Prüfung auf manuelle Änderungen (tracklistchanges)...");
     tracklistchanges();
   } else {
-    Logger.log("Hinweis: Die Funktion tracklistchanges wurde nicht gefunden.");
+    Logger.log("❌ Fehler: Die Funktion tracklistchanges wurde nicht gefunden.");
   }
 }
 
@@ -724,7 +745,7 @@ function checkAndWelcomeNewMembers() {
     JSON.parse(welcomedMembersRaw) : [];
   const isInitialRun = welcomedMemberIds.length === 0;
   if (isInitialRun) {
-    Logger.log('Erster Durchlauf erkannt. Bestehende Mitglieder werden erfasst, ohne E-Mails zu senden.');
+    Logger.log('✅ Erster Durchlauf erkannt. Bestehende Mitglieder werden erfasst, ohne E-Mails zu senden.');
   }
 
   try {
@@ -733,7 +754,7 @@ function checkAndWelcomeNewMembers() {
     if (!sheet) return;
     const lastRow = sheet.getLastRow();
     if (lastRow <= 1) {
-      Logger.log('Keine Mitgliederdaten in der Tabelle gefunden.');
+      Logger.log('⚠️ Keine Mitgliederdaten in der Tabelle gefunden.');
       scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([]));
       return;
     } 
@@ -795,7 +816,7 @@ function checkAndWelcomeNewMembers() {
 
     // Zurück in Array konvertieren für Speicherung
     scriptProperties.setProperty('WELCOMED_MEMBER_IDS', JSON.stringify([...welcomedSet]));
-    Logger.log(`Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
+    Logger.log(`✅ Prüfung abgeschlossen. ${mailsSentCount} neue(s) Mitglied(er) verarbeitet.`);
     
     // JETZT MITGLIEDERBERECHTIGUNG AUSFÜHREN: --> Google API unterbindet die automatisierte Rechtevergabe. Daher wird die Funktion auskommentiert
 //    if (mailsSentCount > 0 && !isInitialRun) {
@@ -806,7 +827,7 @@ function checkAndWelcomeNewMembers() {
 //    }
     
   } catch (e) {
-    Logger.log('Fehler im Onboarding-Script: ' + e.message);
+    Logger.log('❌ Fehler im Onboarding-Script: ' + e.message);
   }
 }
 
@@ -1393,17 +1414,17 @@ function fetchAndSyncAnleitungPDF() {
 function setEarliestBookingDate() {
   const zielDatum = '01.06.2026';
   PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', zielDatum);
-  Logger.log(`Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`);
+  Logger.log(`✅ Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`);
 }
 
 function resetWelcomeDatabase() {
   PropertiesService.getScriptProperties().deleteProperty('WELCOMED_MEMBER_IDS');
-  Logger.log('Onboarding-Datenbank zurückgesetzt.');
+  Logger.log('✅ Onboarding-Datenbank zurückgesetzt.');
 }
 
 function resetTrackingSnapshot() {
   PropertiesService.getScriptProperties().deleteProperty('MEMBER_LIST_SNAPSHOT');
-  Logger.log('Tracking-Schnappschuss wurde erfolgreich gelöscht.');
+  Logger.log('✅ Tracking-Schnappschuss wurde erfolgreich gelöscht.');
 }
 
 // Helper zum Parsen europäischer Daten (Zahlenformate + deutsche Monatsnamen)
