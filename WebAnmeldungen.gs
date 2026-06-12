@@ -72,6 +72,21 @@ function sendeFormularAntwortenPerMail(e) {
     </div>
   `;
 
+  // Plain-Text-Body: Jedes Feld steht auf einer eigenen Zeile und beginnt mit
+  // dem Feldnamen, damit Reservierungssystem.gs (parseEmailTemplate) die Werte
+  // korrekt per startsWith() erkennen kann.
+  const plainBody =
+    `Details der Buchungsanfrage:\n` +
+    `Eingegangen am: ${zeitstempel}\n` +
+    `Absender: ${absenderEmail}\n` +
+    `\n` +
+    `Datum: ${datum}\n` +
+    `Slot: ${slot}\n` +
+    `Typ: ${typ}\n` +
+    `Beschreibung: ${beschreibung}\n` +
+    `\n` +
+    `Bisherige Antworten im Formular ansehen: ${antwortenLink}`;
+
   // Erweiterte Optionen für die Mail vorbereiten
   const advancedOptions = { 
     replyTo: absenderEmail, 
@@ -80,14 +95,14 @@ function sendeFormularAntwortenPerMail(e) {
 
   try {
     // Direktes Senden der Mail mit den erweiterten Optionen
-    GmailApp.sendEmail(ADMIN_EMAIL, subject, "HTML-Inhalt wird geladen...", advancedOptions);
+    GmailApp.sendEmail(ADMIN_EMAIL, subject, plainBody, advancedOptions);
     console.info(`✅ Neue Buchungsanfrage als Mail weitergeleitet.`);
   } catch (error) {
     console.warn(`⚠️ Direktes Senden fehlgeschlagen. Fehler: ${error.message}`);
     
     try {
       // Fallback: Wenn das direkte Senden scheitert, erstellen wir einen Entwurf
-      GmailApp.createDraft(ADMIN_EMAIL, subject, "HTML-Inhalt wird geladen...", advancedOptions);
+      GmailApp.createDraft(ADMIN_EMAIL, subject, plainBody, advancedOptions);
       console.info(`📝 Entwurf im Postfach erstellt, da der direkte Versand fehlschlug.`);
     } catch (draftError) {
       console.error(`❌ Fehler beim Erstellen des Entwurfs: ${draftError.message}`);
