@@ -593,7 +593,7 @@ function createTestEmail({subject = 'Reservierung', body}) {
 
 function labelTestEmails() {
   Utilities.sleep(3500);
-  const threads = GmailApp.search('is:unread from:me (subject:"Reservierung" OR subject:"Stornierung" OR subject:"Absage")');
+  const threads = GmailApp.search('is:unread from:me (subject:"Reservierung" OR subject:"Stornierung")');
   const label = GmailApp.getUserLabelByName("Reservierung/Neu");
   if (label && threads.length > 0) {
     label.addToThreads(threads);
@@ -609,7 +609,7 @@ function cleanupOldTestMails() {
   let labelArchiv = GmailApp.getUserLabelByName(archivLabelName);
   if (!labelArchiv) { labelArchiv = GmailApp.createLabel(archivLabelName); }
   
-  const threads = GmailApp.search('from:me "Reservierung" OR "stornierung" OR "Buchung" OR "Absage"');
+  const threads = GmailApp.search('from:me "Reservierung" OR "Stornierung"');
   threads.forEach(thread => {
     if(labelNeu) labelNeu.removeFromThread(thread);
     if(labelErledigt) labelErledigt.removeFromThread(thread);
