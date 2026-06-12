@@ -598,6 +598,7 @@ function labelTestEmails() {
   if (label && threads.length > 0) {
     label.addToThreads(threads);
   }
+  Utilities.sleep(1000);
 }
 
 function cleanupOldTestMails() {
