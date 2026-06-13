@@ -2,7 +2,7 @@
 // CONFIGURATION / EINSTELLUNGEN
 // ==========================================
 var FORM_ID = "1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE"; // <-- Deine Formular-ID hier rein
-var ADMIN_EMAIL = Session.getActiveUser().getEmail();  // <-- Deine Admin-E-Mail hier rein
+var ADMIN_EMAIL = Session.getActiveUser().getEmail();
 
 // ==========================================
 // 1. DIE HAUPTFUNKTION (WIRD VOM TRIGGER GESTARTET)
@@ -16,18 +16,35 @@ function sendeFormularAntwortenPerMail(e) {
   var letzteAntwort = antworten[antworten.length - 1];
   var einzelAntworten = letzteAntwort.getItemResponses();
   
-  // Variablen für die 4 Felder initialisieren
+  // Variablen für die Felder initialisieren
   var datumRaw = "-";
   var datum = "-";
   var slot = "-";
-  var typ = "-";
+  var typ = ""; // Standardmäßig leer, falls kein "Joker" gewählt wurde
   var beschreibung = "-";
   
   // Antworten sicher nach Index zuweisen
   if (einzelAntworten.length > 0) datumRaw = einzelAntworten[0].getResponse();
   if (einzelAntworten.length > 1) slot = einzelAntworten[1].getResponse();
-  if (einzelAntworten.length > 2) typ = einzelAntworten[2].getResponse();
-  if (einzelAntworten.length > 3) beschreibung = einzelAntworten[3].getResponse();
+  
+  // Logik für Index 2 (Typ / Joker-Prüfung) und Index 3 (Beschreibung)
+  if (einzelAntworten.length > 2) {
+    var antwortIndex2 = einzelAntworten[2].getResponse();
+    
+    // Prüfen, ob der spezifische String in der Antwort enthalten ist
+    if (antwortIndex2.includes("Joker Buchung (max. 2 pro Saison möglich)")) {
+      typ = "Joker";
+      
+      // Falls es auch noch eine reguläre Beschreibung an Index 3 gibt, holen wir diese
+      if (einzelAntworten.length > 3) {
+        beschreibung = einzelAntworten[3].getResponse();
+      }
+    } else {
+      // Wenn es kein Joker ist, bleibt typ "" (leer) und die Antwort wird zur Beschreibung
+      typ = ""; 
+      beschreibung = antwortIndex2;
+    }
+  }
   
   // Das erste Feld (Datum) in dasselbe Format wie den Zeitstempel bringen
   if (datumRaw !== "-") {
@@ -129,5 +146,5 @@ function setupTrigger() {
            .onFormSubmit()
            .create();
            
-  cconsole.info("✅ Trigger erfolgreich eingerichtet!");
+  console.info("✅ Trigger erfolgreich eingerichtet!");
 }
