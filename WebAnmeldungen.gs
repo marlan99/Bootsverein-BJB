@@ -17,6 +17,7 @@ function sendeFormularAntwortenPerMail(e) {
   var einzelAntworten = letzteAntwort.getItemResponses();
   
   // Variablen für die Felder initialisieren
+  var buchung = "-";
   var datumRaw = "-";
   var datum = "-";
   var slot = "-";
@@ -24,25 +25,26 @@ function sendeFormularAntwortenPerMail(e) {
   var beschreibung = "-";
   
   // Antworten sicher nach Index zuweisen
-  if (einzelAntworten.length > 0) datumRaw = einzelAntworten[0].getResponse();
-  if (einzelAntworten.length > 1) slot = einzelAntworten[1].getResponse();
+  if (einzelAntworten.length > 0) buchung = einzelAntworten[0].getResponse();
+  if (einzelAntworten.length > 1) datumRaw = einzelAntworten[1].getResponse();
+  if (einzelAntworten.length > 2) slot = einzelAntworten[2].getResponse();
   
-  // Logik für Index 2 (Typ / Joker-Prüfung) und Index 3 (Beschreibung)
-  if (einzelAntworten.length > 2) {
-    var antwortIndex2 = einzelAntworten[2].getResponse();
+  // Logik für Index 3 (Typ / Joker-Prüfung) und Index 3 (Beschreibung)
+  if (einzelAntworten.length > 3) {
+    var antwortIndex3 = einzelAntworten[3].getResponse();
     
     // Prüfen, ob der spezifische String in der Antwort enthalten ist
-    if (antwortIndex2.includes("Joker Buchung (max. 2 pro Saison möglich)")) {
+    if (antwortIndex3.includes("Joker Buchung (max. 2 pro Saison möglich)")) {
       typ = "Joker";
       
-      // Falls es auch noch eine reguläre Beschreibung an Index 3 gibt, holen wir diese
-      if (einzelAntworten.length > 3) {
-        beschreibung = einzelAntworten[3].getResponse();
+      // Falls es auch noch eine reguläre Beschreibung an Index 4 gibt, holen wir diese
+      if (einzelAntworten.length > 4) {
+        beschreibung = einzelAntworten[4].getResponse();
       }
     } else {
       // Wenn es kein Joker ist, bleibt typ "" (leer) und die Antwort wird zur Beschreibung
       typ = ""; 
-      beschreibung = antwortIndex2;
+      beschreibung = antwortIndex3;
     }
   }
   
@@ -69,7 +71,10 @@ function sendeFormularAntwortenPerMail(e) {
   var antwortenLink = form.getSummaryUrl();
   
   // Den Inhalt der E-Mail vorbereiten
-  var subject = "⛵ Neue Buchungsanfrage/Reservierung (" + form.getTitle() + ")";
+  var subject = "⛵ Neue Reservierung (" + form.getTitle() + ")";
+  if (buchung.includes("Stornierung")) {
+    subject = "⛵ Neue Stornierung (" + form.getTitle() + ")";
+  }
 
   // Der HTML-Body
   const htmlBody = `
