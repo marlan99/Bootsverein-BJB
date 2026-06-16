@@ -167,8 +167,11 @@ function parseEmailTemplate(body) {
   };
   lines.forEach(line => {
     for (const [key, prop] of Object.entries(fields)) {
-      if (line.toLowerCase().startsWith(key.toLowerCase() + ':')) { // Tolerant gegenüber Groß-/Kleinschreibung beim Key
-        data[prop] = line.substring(key.length + 1).trim();
+      // Tolerant gegenüber: Gross-/Kleinschreibung, fehlendem Doppelpunkt
+      // und Position im Text (Feld muss nicht am Zeilenanfang stehen)
+      const match = line.match(new RegExp(`(?:^|\\s)${key}[:\\s]\\s*(.+)`, 'i'));
+      if (match) {
+        data[prop] = match[1].trim();
       }
     }
   });
