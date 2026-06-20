@@ -241,6 +241,7 @@ function validateRequest(data, userId, sender, calendar) {
   data.memberId = memberData.id;
   data.memberMobile = memberData.mobile;
   if (memberData.name) data.name = memberData.name;
+  data.vorname = memberData.vorname;
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -668,7 +669,7 @@ function tracklistchanges() {
 }
 
 function sendChangeReportMail(adminEmail, added, removed, updated) {
-  let subject = `✅ Änderungsbericht: Mitglieder BC1890`;
+  let subject = `⚠️ Änderungsbericht: Mitglieder BC1890`;
   if (CONFIG.TRACKING_TEST_MODUS_AKTIV) subject = `[TEST] ` + subject;
 
   const tableStyle = 'width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; font-size: 14px;';
@@ -851,14 +852,14 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
   
   let finalReceiver = toEmail;
   let finalCc = adminEmail;
-  let subject = 'Herzlich willkommen beim Bootsclub 1890! ⛵';
+  let subject = '⛵ Herzlich willkommen beim Bootsclub 1890!';
   let testNoticeHtml = '';
   let testNoticePlain = '';
 
   if (CONFIG.TEST_MODUS_AKTIV) {
     finalReceiver = adminEmail;
     finalCc = '';
-    subject = `[TEST-MODUS für: ${toEmail}] Herzlich Willkommen beim Bootsclub 1890! ⛵`;
+    subject = `[TEST-MODUS für: ${toEmail}] ⛵ Herzlich Willkommen beim Bootsclub 1890!`;
     testNoticeHtml = `
       <div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 20px; color: #856404; font-family: sans-serif; border-radius: 4px;">
         ⚠️ <b>SYSTEM-HINWEIS (TEST-MODUS):</b> Diese E-Mail wurde automatisch abgefangen und an den Vorstand umgeleitet.<br>
@@ -994,7 +995,7 @@ function ausfuehrenKalenderSynchronisierung() {
           
           Logger.log(`➕ Zugriff ERLAUBT für neues Mitglied: ${email}`);
         } catch (e) {
-          // ✅ INTEGRIERTER SCHUTZ: Fängt ungültige Google-Konten ab (Bad Request)
+          // INTEGRIERTER SCHUTZ: Fängt ungültige Google-Konten ab (Bad Request)
           if (e.message.includes('Bad Request') || e.message.includes('invalid')) {
             Logger.log(`❌ HINWEIS für Admin bei ${email}: Diese Adresse besitzt vermutlich kein Google-Konto oder ist nicht für Google-Dienste registriert. (API-Fehler: Bad Request)`);
           } else {
@@ -1068,7 +1069,7 @@ function executeCancellation(data, userId, thread, message) {
   const memberData = getAuthorizedUserData(userId);
   
   if (!memberData) {
-    sendCancellationRejectionEmail(userId, 'Löschen der Buchung abgelehnt', `❌ Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
+    sendCancellationRejectionEmail(userId, '❌ Löschen der Buchung abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
     return false;
   }
 
@@ -1077,6 +1078,7 @@ function executeCancellation(data, userId, thread, message) {
   const commEmail = memberData.primaryEmail;
   
   data.name = memberData.name;
+  data.vorname = memberData.vorname;
   const jetzt = new Date();  
   const slotTime = data.slot === 'vormittag' ? CONFIG.SLOT_VORMITTAG : CONFIG.SLOT_NACHMITTAG;
   const terminStartZeit = new Date(data.parsedDate); 
@@ -1087,7 +1089,7 @@ function executeCancellation(data, userId, thread, message) {
   const stornierungsFrist = new Date(terminStartZeit.getTime() - (24 * 60 * 60 * 1000));
   if (jetzt > stornierungsFrist) {
     let fehlerGrund = terminStartZeit < jetzt ? 'Der Termin liegt in der Vergangenheit.' : `Die Frist für eine automatische Stornierung (24h vor Beginn) ist abgelaufen.`;
-    sendCancellationRejectionEmail(commEmail, 'Löschen der Buchung abgelehnt', `Hallo ${data.name},\n\n❌ Grund: ${fehlerGrund}`, thread);
+    sendCancellationRejectionEmail(commEmail, '❌ Löschen der Buchung abgelehnt', `Hallo ${data.vorname || data.name},\n\nGrund: ${fehlerGrund}`, thread);
     return false; 
   }
 
@@ -1101,7 +1103,7 @@ function executeCancellation(data, userId, thread, message) {
 
   if (userEvent) {
     if (userEvent.getTitle().toUpperCase().includes('JOKER')) {
-      sendCancellationRejectionEmail(commEmail, 'Löschen der Buchung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, thread);
+      sendCancellationRejectionEmail(commEmail, '❌ Löschen der Buchung fehlgeschlagen', `Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, thread);
       return false;
     }
 
@@ -1111,27 +1113,31 @@ function executeCancellation(data, userId, thread, message) {
     // (z.B. wegen Google-Limitierungen) fehl, soll die Stornierung trotzdem als
     // erfolgreich gelten, da der Kalendereintrag bereits entfernt wurde.
     try {
-      GmailApp.sendEmail(commEmail, 'Bestätigung: Termin freigegeben', `✅ Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
+      GmailApp.sendEmail(commEmail, '✅ Bestätigung: Termin freigegeben', `Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
     } catch (mailError) {
       Logger.log(`⚠️ Kalendereintrag wurde storniert, aber Bestätigungsmail konnte nicht gesendet werden: ${mailError.message}`);
     }
     return true;
   } else {
-    sendCancellationRejectionEmail(commEmail, 'Löschen der Buchung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, thread);
+    sendCancellationRejectionEmail(commEmail, '❌ Löschen der Buchung fehlgeschlagen', `Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, thread);
     return false;
   }
 }
 
 function sendConfirmationEmail(to, event, data, thread) {
-  const subject = 'Buchung bestätigt: ' + event.getTitle();
+  const subject = '✅ Buchung bestätigt: ' + event.getTitle();
+
+  // Vorname kommt jetzt direkt aus dem dedizierten Sheet-Feld (Spalte B),
+  // statt ihn nachträglich aus data.name (Vorname + Nachname) herauszuschneiden.
+  const firstName = data.vorname || data.name;
   
   // 1. Der reine Text-Body (Fallback) erhält ebenfalls saubere Emojis
-  const plainBody = `Hallo ${data.name},\n\ndein Termin wurde erfolgreich eingetragen:\n\nDatum: ${formatDateDDMMYYYY(data.parsedDate)}\nSlot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\n\nDein Vorstand`;
+  const plainBody = `Hallo ${firstName},\n\ndein Termin wurde erfolgreich eingetragen:\n\nDatum: ${formatDateDDMMYYYY(data.parsedDate)}\nSlot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}\n\nDein Vorstand`;
   
   // 2. Der HTML-Body (erzwingt die korrekte Codierung im Mail-Client)
   const htmlBody = `
     <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
-      <p>Hallo ${data.name},</p>
+      <p>Hallo ${firstName},</p>
       <p>dein Termin wurde erfolgreich eingetragen:</p>
       <p style="line-height: 1.6;">
         &#128197; <b>Datum:</b> ${formatDateDDMMYYYY(data.parsedDate)}<br>
@@ -1164,8 +1170,8 @@ function sendConfirmationEmail(to, event, data, thread) {
 }
 
 function sendRejectionEmail(to, reason, thread) {
-  const subject = 'Buchung abgelehnt';
-  const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\n❌ Grund: ${reason}`;
+  const subject = '❌ Buchung abgelehnt';
+  const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\nGrund: ${reason}`;
   try {
     // 1. Versuch: Direkt senden
     GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
@@ -1213,7 +1219,7 @@ function getAuthorizedUserData(email) {
       targetFolder.addFile(file);
       DriveApp.getRootFolder().removeFile(file);
 
-      sheet.appendRow(["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile", "Zusätzliche E-Mail(s)"]);
+      sheet.appendRow(["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile", "Webformular"]);
       sheet.getRange(1, 1, 1, 6).setFontWeight("bold");
       sheet.appendRow(["BJB-000", "Vorstand", "", CONFIG.ADMIN_EMAIL, "", ""]);
       sheet.autoResizeColumns(1, 6);
@@ -1251,6 +1257,7 @@ function getAuthorizedUserData(email) {
       const userObj = {
         id: dataRange[i][0] ? dataRange[i][0].toString().trim() : 'Keine ID',  
         name: `${dataRange[i][1] || ''} ${dataRange[i][2] || ''}`.trim() || primaryEmail,    
+        vorname: dataRange[i][1] ? dataRange[i][1].toString().trim() : '',
         mobile: dataRange[i][4] ? dataRange[i][4].toString().trim() : 'Nicht hinterlegt',
         primaryEmail: primaryEmail,
         additionalEmails: additionalEmails
@@ -1336,7 +1343,7 @@ function sendDailyReservationReminders() {
       // 3. Sende die E-Mail mit der htmlBody-Option an das Mitglied
       GmailApp.sendEmail(
         empfaengerEmail, 
-        `Erinnerung: Deine Boot Buchung für morgen!`, 
+        `⚠️ Erinnerung: Deine Boot Buchung für morgen!`, 
         textFallback, 
         {
           htmlBody: htmlInhalt
