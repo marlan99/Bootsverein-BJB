@@ -123,8 +123,17 @@ function processSingleEmail(message, thread, calendar) {
     console.info(`ℹ️ Stellvertreter-Buchung: Antrag im Auftrag von ${userId} (weitergeleitet durch Admin ${sender}).`);
   }
 
+  // Mehrfach-Adressen pro Mitglied: userId kann die primäre ODER eine
+  // zusätzliche (nur reservierungsberechtigte) Adresse sein. Für jegliche
+  // Kommunikation (Bestätigung, Ablehnung, Kalender-Kontakt) wird IMMER die
+  // primäre Adresse (Spalte D) verwendet, sofern das Mitglied gefunden wird.
+  // Ist die Adresse nicht hinterlegt, bleibt commEmail die ursprünglich
+  // sendende Adresse (Fallback, damit die Ablehnungsmail trotzdem ankommt).
+  const memberDataForComm = getAuthorizedUserData(userId);
+  const commEmail = memberDataForComm ? memberDataForComm.primaryEmail : userId;
+
   if (!data.valid) {
-    sendRejectionEmail(userId, data.error, thread);
+    sendRejectionEmail(commEmail, data.error, thread);
     return 'ABGELEHNT';
   }
 
@@ -137,17 +146,19 @@ function processSingleEmail(message, thread, calendar) {
   // Kalender wird hier direkt übergeben
   const validation = validateRequest(data, userId, sender, calendar);
   if (!validation.valid) {
-    sendRejectionEmail(userId, validation.error, thread);
+    sendRejectionEmail(commEmail, validation.error, thread);
     return 'ABGELEHNT';
   }
 
-  // Kalender wird hier direkt übergeben
-  const event = createCalendarEvent(data, userId, calendar);
+  // Kalender wird hier direkt übergeben. "Kontakt:" im Event speichert bewusst
+  // die primäre Adresse (commEmail), damit z.B. Erinnerungsmails immer an die
+  // primäre Adresse gehen, unabhängig davon, von welcher Adresse gebucht wurde.
+  const event = createCalendarEvent(data, commEmail, calendar);
   if (event) {
-    sendConfirmationEmail(userId, event, data, thread);
+    sendConfirmationEmail(commEmail, event, data, thread);
     return 'ERLEDIGT';
   } else {
-    sendRejectionEmail(userId, 'Fehler beim Erstellen des Termins im Google Kalender.', thread);
+    sendRejectionEmail(commEmail, 'Fehler beim Erstellen des Termins im Google Kalender.', thread);
     return 'ABGELEHNT';
   }
 }
@@ -1060,6 +1071,10 @@ function executeCancellation(data, userId, thread, message) {
     sendCancellationRejectionEmail(userId, 'Löschen der Buchung abgelehnt', `❌ Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
     return false;
   }
+
+  // Kommunikation läuft immer über die primäre Adresse (Spalte D), auch wenn
+  // die Stornierung von einer zusätzlichen Adresse aus ausgelöst wurde.
+  const commEmail = memberData.primaryEmail;
   
   data.name = memberData.name;
   const jetzt = new Date();  
@@ -1072,7 +1087,7 @@ function executeCancellation(data, userId, thread, message) {
   const stornierungsFrist = new Date(terminStartZeit.getTime() - (24 * 60 * 60 * 1000));
   if (jetzt > stornierungsFrist) {
     let fehlerGrund = terminStartZeit < jetzt ? 'Der Termin liegt in der Vergangenheit.' : `Die Frist für eine automatische Stornierung (24h vor Beginn) ist abgelaufen.`;
-    sendCancellationRejectionEmail(userId, 'Löschen der Buchung abgelehnt', `Hallo ${data.name},\n\n❌ Grund: ${fehlerGrund}`, thread);
+    sendCancellationRejectionEmail(commEmail, 'Löschen der Buchung abgelehnt', `Hallo ${data.name},\n\n❌ Grund: ${fehlerGrund}`, thread);
     return false; 
   }
 
@@ -1086,7 +1101,7 @@ function executeCancellation(data, userId, thread, message) {
 
   if (userEvent) {
     if (userEvent.getTitle().toUpperCase().includes('JOKER')) {
-      sendCancellationRejectionEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, thread);
+      sendCancellationRejectionEmail(commEmail, 'Löschen der Buchung fehlgeschlagen', `❌ Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, thread);
       return false;
     }
 
@@ -1096,13 +1111,13 @@ function executeCancellation(data, userId, thread, message) {
     // (z.B. wegen Google-Limitierungen) fehl, soll die Stornierung trotzdem als
     // erfolgreich gelten, da der Kalendereintrag bereits entfernt wurde.
     try {
-      GmailApp.sendEmail(userId, 'Bestätigung: Termin freigegeben', `✅ Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
+      GmailApp.sendEmail(commEmail, 'Bestätigung: Termin freigegeben', `✅ Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
     } catch (mailError) {
       Logger.log(`⚠️ Kalendereintrag wurde storniert, aber Bestätigungsmail konnte nicht gesendet werden: ${mailError.message}`);
     }
     return true;
   } else {
-    sendCancellationRejectionEmail(userId, 'Löschen der Buchung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, thread);
+    sendCancellationRejectionEmail(commEmail, 'Löschen der Buchung fehlgeschlagen', `❌ Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, thread);
     return false;
   }
 }
@@ -1198,10 +1213,10 @@ function getAuthorizedUserData(email) {
       targetFolder.addFile(file);
       DriveApp.getRootFolder().removeFile(file);
 
-      sheet.appendRow(["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile"]);
-      sheet.getRange(1, 1, 1, 5).setFontWeight("bold");
-      sheet.appendRow(["BJB-000", "Vorstand", "", CONFIG.ADMIN_EMAIL, ""]);
-      sheet.autoResizeColumns(1, 5);
+      sheet.appendRow(["Mitglieder ID", "Vorname", "Name", "E-Mail", "Mobile", "Zusätzliche E-Mail(s)"]);
+      sheet.getRange(1, 1, 1, 6).setFontWeight("bold");
+      sheet.appendRow(["BJB-000", "Vorstand", "", CONFIG.ADMIN_EMAIL, "", ""]);
+      sheet.autoResizeColumns(1, 6);
 
       scriptProperties.setProperty('SHEET_CONFIG_ID', sheetId);
     } catch (err) { return null;
@@ -1211,24 +1226,44 @@ function getAuthorizedUserData(email) {
   try {
     const lastRow = sheet.getLastRow();
     if (lastRow <= 1) return null;
-    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    const dataRange = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
     
     // Cache initialisieren
     memberDataCache_ = {};
     let foundUserData = null;
 
     for (let i = 0; i < dataRange.length; i++) {
-      const currentEmail = dataRange[i][3] ? dataRange[i][3].toString().trim().toLowerCase() : '';
-      if (!currentEmail) continue;
+      // Spalte D (Index 3): primäre E-Mail-Adresse. Diese gilt IMMER als
+      // Kommunikationsadresse (Bestätigungen, Ablehnungen, Erinnerungen etc.).
+      const primaryEmail = dataRange[i][3] ? dataRange[i][3].toString().trim().toLowerCase() : '';
+      if (!primaryEmail) continue;
+
+      // Spalte F (Index 5): optionale Zusatzadresse(n), Komma- oder Semikolon-
+      // getrennt. Diese dürfen NUR Reservierungen/Stornierungen auslösen,
+      // sind aber nie Empfänger von System-Mails (siehe processSingleEmail /
+      // executeCancellation, dort wird immer memberData.primaryEmail genutzt).
+      const additionalRaw = dataRange[i][5] ? dataRange[i][5].toString() : '';
+      const additionalEmails = additionalRaw
+        .split(/[,;]/)
+        .map(e => e.trim().toLowerCase())
+        .filter(e => e.length > 0);
 
       const userObj = {
         id: dataRange[i][0] ? dataRange[i][0].toString().trim() : 'Keine ID',  
-        name: `${dataRange[i][1] || ''} ${dataRange[i][2] || ''}`.trim() || currentEmail,    
-        mobile: dataRange[i][4] ? dataRange[i][4].toString().trim() : 'Nicht hinterlegt'
+        name: `${dataRange[i][1] || ''} ${dataRange[i][2] || ''}`.trim() || primaryEmail,    
+        mobile: dataRange[i][4] ? dataRange[i][4].toString().trim() : 'Nicht hinterlegt',
+        primaryEmail: primaryEmail,
+        additionalEmails: additionalEmails
       };
-      // Alle Mitglieder in den Cache schreiben für zukünftige Suchen im selben Lauf
-      memberDataCache_[currentEmail] = userObj;
-      if (currentEmail === searchEmail) {
+      // Alle Mitglieder (primär UND zusätzliche Adressen) in den Cache schreiben
+      // für zukünftige Suchen im selben Lauf. Beide Schlüssel zeigen auf
+      // dasselbe Objekt, sodass primaryEmail immer korrekt verfügbar ist.
+      memberDataCache_[primaryEmail] = userObj;
+      additionalEmails.forEach(addr => {
+        memberDataCache_[addr] = userObj;
+      });
+
+      if (primaryEmail === searchEmail || additionalEmails.includes(searchEmail)) {
         foundUserData = userObj;
       }
     }
