@@ -9,6 +9,7 @@ const PDF_SOURCE_URL = 'https://raw.githubusercontent.com/marlan99/Bootsverein-B
 const CONFIG = {
   SYSTEM_FOLDER_NAME: 'Google Kalender Reservierungssystem', // Zentraler Ordnername im Google Drive
   CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
+  FORM_ID: '1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE', // Google-Formular für Web-Anmeldungen (siehe WebAnmeldungen.gs)
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
   GMAIL_LABEL: 'Reservierung/Neu',
   EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
@@ -1584,6 +1585,24 @@ function setupTriggers() {
   ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create();
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
   ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
+
+  // Formular-Trigger (Web-Anmeldungen, siehe WebAnmeldungen.gs)
+  // WICHTIG: Muss hier stehen, da oben ALLE bestehenden Trigger gelöscht werden -
+  // ohne diesen Block würde der Formular-Trigger bei jedem Setup-Lauf verschwinden.
+  if (CONFIG.FORM_ID && typeof sendeFormularAntwortenPerMail === 'function') {
+    try {
+      const webForm = FormApp.openById(CONFIG.FORM_ID);
+      ScriptApp.newTrigger('sendeFormularAntwortenPerMail')
+               .forForm(webForm)
+               .onFormSubmit()
+               .create();
+      Logger.log('✅ Formular-Trigger (Web-Anmeldungen) wurde eingerichtet.');
+    } catch (formTriggerError) {
+      Logger.log('⚠️ Warnung beim Einrichten des Formular-Triggers: ' + formTriggerError.toString());
+    }
+  } else {
+    Logger.log('⚠️ Hinweis: sendeFormularAntwortenPerMail() wurde nicht gefunden - WebAnmeldungen.gs eingebunden?');
+  }
   
   [CONFIG.GMAIL_LABEL, 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
