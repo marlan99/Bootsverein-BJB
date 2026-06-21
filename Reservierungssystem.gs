@@ -15,8 +15,7 @@ const CONFIG = {
   EXCEL_SUBJECT: 'Mitgliederliste',
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
-  TEST_MODUS_AKTIV: false,
-  TRACKING_TEST_MODUS_AKTIV: false,
+  TEST_MODUS_AKTIV: false, // true → Testmodus: Das Onboarding Mail wird statt an das Mitglied an den Admin umgeleitet
 };
 
 // =============================================================================
@@ -547,7 +546,7 @@ function tracklistchanges() {
     const lastRow = sheet.getLastRow();
     
     if (lastRow > 1) {
-      const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+      const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
       for (let i = 0; i < data.length; i++) {
         const id = data[i][0] ? data[i][0].toString().trim() : '';
         if (!id) continue;
@@ -556,7 +555,8 @@ function tracklistchanges() {
           vorname: data[i][1] ? data[i][1].toString().trim() : '',
           nachname: data[i][2] ? data[i][2].toString().trim() : '',
           email: data[i][3] ? data[i][3].toString().trim() : '',
-          mobile: data[i][4] ? data[i][4].toString().trim() : ''
+          mobile: data[i][4] ? data[i][4].toString().trim() : '',
+          zusatzadresse: data[i][5] ? data[i][5].toString().trim() : ''
         };
       }
     }
@@ -596,7 +596,8 @@ function tracklistchanges() {
       if (current.vorname !== prev.vorname || 
           current.nachname !== prev.nachname || 
           current.email !== prev.email || 
-          current.mobile !== prev.mobile) {
+          current.mobile !== prev.mobile ||
+          current.zusatzadresse !== prev.zusatzadresse) {
         
         // === KORREKTUR: Vollständiges Objekt mit changedFields und textDetails ===
         const changedFields = [];
@@ -617,6 +618,10 @@ function tracklistchanges() {
         if (current.mobile !== prev.mobile) {
           changedFields.push('mobile');
           textDetails.push(`Mobile: ${prev.mobile} → ${current.mobile}`);
+        }
+        if (current.zusatzadresse !== prev.zusatzadresse) {
+          changedFields.push('zusatzadresse');
+          textDetails.push(`Zusatzadresse: ${prev.zusatzadresse || '-'} → ${current.zusatzadresse || '-'}`);
         }
 
         updatedMembers.push({ 
@@ -669,8 +674,7 @@ function tracklistchanges() {
 }
 
 function sendChangeReportMail(adminEmail, added, removed, updated) {
-  let subject = `⚠️ Änderungsbericht: Mitglieder BC1890`;
-  if (CONFIG.TRACKING_TEST_MODUS_AKTIV) subject = `[TEST] ` + subject;
+  const subject = `⚠️ Änderungsbericht: Mitglieder BC1890`;
 
   const tableStyle = 'width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; font-size: 14px;';
   const thStyle = 'background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 10px; text-align: left; color: #334155; font-weight: bold;';
@@ -685,18 +689,18 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
 
   if (added.length > 0) {
     html.push(`<h3 style="color: #2f855a; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #c6f6d5; padding-bottom: 4px;">➕ Neu hinzugefügte Mitglieder (${added.length})</h3>`,
-              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`);
+              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 20%;">Name</th><th style="${thStyle} width: 25%;">E-Mail</th><th style="${thStyle} width: 15%;">Mobile</th><th style="${thStyle} width: 30%;">Zusatzadressen für Webformular</th></tr>`);
     added.forEach(m => { 
-      html.push(`<tr><td style="${tdStyle}"><code>${m.id || ''}</code></td><td style="${tdStyle}"><b>${m.vorname} ${m.nachname}</b></td><td style="${tdStyle}">${m.email}</td><td style="${tdStyle}">${m.mobile || '-'}</td></tr>`);
+      html.push(`<tr><td style="${tdStyle}"><code>${m.id || ''}</code></td><td style="${tdStyle}"><b>${m.vorname} ${m.nachname}</b></td><td style="${tdStyle}">${m.email}</td><td style="${tdStyle}">${m.mobile || '-'}</td><td style="${tdStyle}">${m.zusatzadresse || '-'}</td></tr>`);
     });
     html.push('</table>');
   }
 
   if (removed.length > 0) {
     html.push(`<h3 style="color: #9b2c2c; margin-top: 30px; margin-bottom: 5px; border-bottom: 1px solid #fed7d7; padding-bottom: 4px;">➖ Entfernte Mitglieder (${removed.length})</h3>`,
-              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 25%;">Name</th><th style="${thStyle} width: 40%;">E-Mail</th><th style="${thStyle} width: 25%;">Mobile</th></tr>`);
+              `<table style="${tableStyle}"><tr><th style="${thStyle} width: 10%;">ID</th><th style="${thStyle} width: 20%;">Name</th><th style="${thStyle} width: 25%;">E-Mail</th><th style="${thStyle} width: 15%;">Mobile</th><th style="${thStyle} width: 30%;">Zusatzadressen für Webformular</th></tr>`);
     removed.forEach(m => { 
-      html.push(`<tr style="background-color: #fafafa;"><td style="${tdStyle} color: #94a3b8;"><code>${m.id || ''}</code></td><td style="${tdStyle} color: #94a3b8;">${m.vorname} ${m.nachname}</td><td style="${tdStyle} color: #94a3b8;">${m.email}</td><td style="${tdStyle} color: #94a3b8;">${m.mobile || '-'}</td></tr>`);
+      html.push(`<tr style="background-color: #fafafa;"><td style="${tdStyle} color: #94a3b8;"><code>${m.id || ''}</code></td><td style="${tdStyle} color: #94a3b8;">${m.vorname} ${m.nachname}</td><td style="${tdStyle} color: #94a3b8;">${m.email}</td><td style="${tdStyle} color: #94a3b8;">${m.mobile || '-'}</td><td style="${tdStyle} color: #94a3b8;">${m.zusatzadresse || '-'}</td></tr>`);
     });
     html.push('</table>');
   }
@@ -715,7 +719,8 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
         { label: 'Vorname', key: 'vorname' },
         { label: 'Nachname', key: 'nachname' },
         { label: 'E-Mail', key: 'email' },
-        { label: 'Mobile', key: 'mobile' }
+        { label: 'Mobile', key: 'mobile' },
+        { label: 'Zusatzadressen für Webformular', key: 'zusatzadresse' }
       ];
       rows.forEach(r => {
         const isChanged = m.changedFields.includes(r.key);
