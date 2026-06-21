@@ -1,8 +1,11 @@
 // ==========================================
 // CONFIGURATION / EINSTELLUNGEN
 // ==========================================
-var FORM_ID = "1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE"; // <-- Deine Formular-ID hier rein
-var ADMIN_EMAIL = Session.getActiveUser().getEmail();
+// FORM_ID und ADMIN_EMAIL kommen jetzt aus der zentralen CONFIG in
+// Reservierungssystem.gs (gleiches Apps-Script-Projekt), damit es nur
+// eine Quelle der Wahrheit gibt.
+var FORM_ID = CONFIG.FORM_ID;
+var ADMIN_EMAIL = CONFIG.ADMIN_EMAIL;
 
 // ==========================================
 // 1. DIE HAUPTFUNKTION (WIRD VOM TRIGGER GESTARTET)
@@ -130,26 +133,4 @@ function sendeFormularAntwortenPerMail(e) {
       console.error(`❌ Fehler beim Erstellen des Entwurfs: ${draftError.message}`);
     }
   }
-}
-
-// ==========================================
-// 2. SETUP-FUNKTION (NUR 1x HIERNACH AUSFÜHREN)
-// ==========================================
-function setupTrigger() {
-  var form = FormApp.openById(FORM_ID);
-  
-  var alleTrigger = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < alleTrigger.length; i++) {
-    if (alleTrigger[i].getHandlerFunction() === "sendeFormularAntwortenPerMail") {
-      console.info("Der Trigger existiert bereits und muss nicht neu erstellt werden.");
-      return;
-    }
-  }
-  
-  ScriptApp.newTrigger("sendeFormularAntwortenPerMail")
-           .forForm(form)
-           .onFormSubmit()
-           .create();
-           
-  console.info("✅ Trigger erfolgreich eingerichtet!");
 }
