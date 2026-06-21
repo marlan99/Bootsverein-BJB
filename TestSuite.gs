@@ -552,7 +552,7 @@ function testRejectedCancellation() {
     passed: passed,
     message: passed ?
       'Kurzfristige Stornierung wurde richtigerweise blockiert und die Anfrage zu "Abgelehnt" verschoben.'
-    : 'Die Stornierung wurde trotz verletzter Frist durchgeführt oder nicht korrekt einsortiert.'
+    : 'Die Stornierung wurde trotz verletzter Frist durchgeführt oder nicht korrekt einsortiert. (ACHTUNG: Dieser Test funktioniert nur, wenn er nach 08:00 ausgeführt wurde, da der Vormittagssslot erst um 08:00 beginnt)'
   };
 }
 
