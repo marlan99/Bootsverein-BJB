@@ -9,7 +9,7 @@ const PDF_SOURCE_URL = 'https://raw.githubusercontent.com/marlan99/Bootsverein-B
 const CONFIG = {
   SYSTEM_FOLDER_NAME: 'Google Kalender Reservierungssystem', // Zentraler Ordnername im Google Drive
   CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
-  FORM_ID: '1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE', // Google-Formular für Web-Anmeldungen (siehe WebAnmeldungen.gs)
+  FORM_ID: '1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE', // Google-Formular für Web-Anmeldungen
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
   GMAIL_LABEL: 'Reservierung/Neu',
   EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
@@ -1554,6 +1554,138 @@ function getSlotLabelForEvent(event) {
   return `${slotName} (${slot.start} - ${slot.end})`;
 }
 
+// =============================================================================
+// X. WEB-ANMELDUNGEN: GOOGLE-FORMS-ANTWORTEN PER MAIL WEITERLEITEN
+// =============================================================================
+// Wird per Formular-Trigger (siehe setupTriggers()) bei jeder neuen
+// Formular-Antwort ausgelöst. Erzeugt eine E-Mail im selben Klartext-Format,
+// das parseEmailTemplate() weiter oben erwartet ("Datum:", "Slot:", ...),
+// damit Web-Anmeldungen genauso wie manuelle Reservierungs-Mails verarbeitet werden.
+
+function sendeFormularAntwortenPerMail(e) {
+  // Das Formular über die ID ansteuern
+  var form = FormApp.openById(CONFIG.FORM_ID);
+
+  // Die allerletzte Antwort abgreifen, die gerade abgeschickt wurde
+  var antworten = form.getResponses();
+  var letzteAntwort = antworten[antworten.length - 1];
+  var einzelAntworten = letzteAntwort.getItemResponses();
+
+  // Variablen für die Felder initialisieren
+  var buchung = "-";
+  var datumRaw = "-";
+  var datum = "-";
+  var slot = "-";
+  var typ = ""; // Standardmäßig leer, falls kein "Joker" gewählt wurde
+  var beschreibung = "-";
+
+  // Antworten sicher nach Index zuweisen
+  if (einzelAntworten.length > 0) buchung = einzelAntworten[0].getResponse();
+  if (einzelAntworten.length > 1) datumRaw = einzelAntworten[1].getResponse();
+  if (einzelAntworten.length > 2) slot = einzelAntworten[2].getResponse();
+
+  // Logik für Index 3 (Typ / Joker-Prüfung) und Index 3 (Beschreibung)
+  if (einzelAntworten.length > 3) {
+    var antwortIndex3 = einzelAntworten[3].getResponse();
+
+    // Prüfen, ob der spezifische String in der Antwort enthalten ist
+    if (antwortIndex3.includes("Joker Buchung (max. 2 pro Saison möglich)")) {
+      typ = "Joker";
+
+      // Falls es auch noch eine reguläre Beschreibung an Index 4 gibt, holen wir diese
+      if (einzelAntworten.length > 4) {
+        beschreibung = einzelAntworten[4].getResponse();
+      }
+    } else {
+      // Wenn es kein Joker ist, bleibt typ "" (leer) und die Antwort wird zur Beschreibung
+      typ = "";
+      beschreibung = antwortIndex3;
+    }
+  }
+
+  // Das erste Feld (Datum) in dasselbe Format wie den Zeitstempel bringen
+  if (datumRaw !== "-") {
+    try {
+      var datumObjekt = new Date(datumRaw);
+      // Prüfen, ob die Umwandlung ein gültiges Datum erzeugt hat
+      if (!isNaN(datumObjekt.getTime())) {
+        datum = Utilities.formatDate(datumObjekt, Session.getScriptTimeZone(), "dd.MM.yyyy");
+      } else {
+        datum = datumRaw; // Fallback, falls es ein normales Textfeld war
+      }
+    } catch(err) {
+      datum = datumRaw; // Fallback bei Fehlern
+    }
+  }
+
+  // Falls die E-Mail-Erfassung im Formular aktiv ist, holen wir den Absender
+  var absenderEmail = letzteAntwort.getRespondentEmail() || "Nicht erfasst / Anonym";
+  var zeitstempel = Utilities.formatDate(letzteAntwort.getTimestamp(), Session.getScriptTimeZone(), "dd.MM.yyyy HH:mm");
+
+  // Den Link zu den bisherigen Antworten (Antwortübersicht) abrufen
+  var antwortenLink = form.getSummaryUrl();
+
+  // Den Inhalt der E-Mail vorbereiten
+  var subject = "⛵ Neue Reservierung (" + form.getTitle() + ")";
+  if (buchung.includes("Stornierung")) {
+    subject = "⛵ Neue Stornierung (" + form.getTitle() + ")";
+  }
+
+  // Der HTML-Body
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.5;">
+        <h3 style="color: #0056b3; margin-top: 0;">Details der Buchungsanfrage:</h3>
+        <b>Eingegangen am:</b> ${zeitstempel}<br>
+        <b>Absender:</b> ${absenderEmail}<br>
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
+        <b>Datum:</b> ${datum}<br>
+        <b>Slot:</b> ${slot}<br>
+        <b>Typ:</b> ${typ}<br>
+        <b>Beschreibung:</b> ${beschreibung}<br>
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
+        <p style="margin-bottom: 0;">
+          <a href="${antwortenLink}" style="color: #0056b3; text-decoration: none; font-weight: bold;">Bisherige Antworten im Formular ansehen</a>
+        </p>
+    </div>
+  `;
+
+  // Plain-Text-Body: Jedes Feld steht auf einer eigenen Zeile und beginnt mit
+  // dem Feldnamen, damit parseEmailTemplate() die Werte korrekt erkennen kann.
+  const plainBody =
+    `Details der Buchungsanfrage:\n` +
+    `Eingegangen am: ${zeitstempel}\n` +
+    `Absender: ${absenderEmail}\n` +
+    `\n` +
+    `Datum: ${datum}\n` +
+    `Slot: ${slot}\n` +
+    `Typ: ${typ}\n` +
+    `Beschreibung: ${beschreibung}\n` +
+    `\n` +
+    `Bisherige Antworten im Formular ansehen: ${antwortenLink}`;
+
+  // Erweiterte Optionen für die Mail vorbereiten
+  const advancedOptions = {
+    replyTo: absenderEmail,
+    htmlBody: htmlBody
+  };
+
+  try {
+    // Direktes Senden der Mail mit den erweiterten Optionen
+    GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, plainBody, advancedOptions);
+    console.info(`✅ Neue Buchungsanfrage als Mail weitergeleitet.`);
+  } catch (error) {
+    console.warn(`⚠️ Direktes Senden fehlgeschlagen. Fehler: ${error.message}`);
+
+    try {
+      // Fallback: Wenn das direkte Senden scheitert, erstellen wir einen Entwurf
+      GmailApp.createDraft(CONFIG.ADMIN_EMAIL, subject, plainBody, advancedOptions);
+      console.info(`📝 Entwurf im Postfach erstellt, da der direkte Versand fehlschlug.`);
+    } catch (draftError) {
+      console.error(`❌ Fehler beim Erstellen des Entwurfs: ${draftError.message}`);
+    }
+  }
+}
+
 function setupTriggers() {
   Logger.log('========================================================================');
   Logger.log('🚀 STARTE CENTRAL SYSTEM SETUP...');
@@ -1586,10 +1718,10 @@ function setupTriggers() {
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
   ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
 
-  // Formular-Trigger (Web-Anmeldungen, siehe WebAnmeldungen.gs)
+  // Formular-Trigger (Web-Anmeldungen, siehe sendeFormularAntwortenPerMail() oben)
   // WICHTIG: Muss hier stehen, da oben ALLE bestehenden Trigger gelöscht werden -
   // ohne diesen Block würde der Formular-Trigger bei jedem Setup-Lauf verschwinden.
-  if (CONFIG.FORM_ID && typeof sendeFormularAntwortenPerMail === 'function') {
+  if (CONFIG.FORM_ID) {
     try {
       const webForm = FormApp.openById(CONFIG.FORM_ID);
       ScriptApp.newTrigger('sendeFormularAntwortenPerMail')
@@ -1600,8 +1732,6 @@ function setupTriggers() {
     } catch (formTriggerError) {
       Logger.log('⚠️ Warnung beim Einrichten des Formular-Triggers: ' + formTriggerError.toString());
     }
-  } else {
-    Logger.log('⚠️ Hinweis: sendeFormularAntwortenPerMail() wurde nicht gefunden - WebAnmeldungen.gs eingebunden?');
   }
   
   [CONFIG.GMAIL_LABEL, 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
