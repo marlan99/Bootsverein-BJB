@@ -343,12 +343,17 @@ function testWhitelistCheck() {
       return { name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen', passed: false, message: 'Tabelle ist leer oder enthält nur Kopfzeilen.' };
     }
     
-    const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    const dataRange = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
     let gefunden = false;
     
     for (let i = 0; i < dataRange.length; i++) {
-      if (!dataRange[i][3]) continue;
-      if (dataRange[i][3].toString().trim().toLowerCase() === targetEmail) {
+      const primaryEmail = dataRange[i][3] ? dataRange[i][3].toString().trim().toLowerCase() : '';
+      const additionalEmails = (dataRange[i][5] ? dataRange[i][5].toString() : '')
+        .split(/[,;]/)
+        .map(e => e.trim().toLowerCase())
+        .filter(e => e.length > 0);
+      
+      if (primaryEmail === targetEmail || additionalEmails.includes(targetEmail)) {
         gefunden = true;
         break;
       }
@@ -359,7 +364,7 @@ function testWhitelistCheck() {
       passed: gefunden,
       message: gefunden 
         ? `Adresse "${targetEmail}" erfolgreich in der Whitelist gefunden.` 
-        : `Adresse "${targetEmail}" fehlt in Spalte D der Tabelle.`
+        : `Adresse "${targetEmail}" fehlt in Spalte D und F der Tabelle.`
     };
   } catch (e) {
     return { name: 'ID 0 – Whitelist-Eintrag für Test-Mail prüfen', passed: false, message: 'Fehler beim Tabellenzugriff: ' + e.message };
@@ -705,7 +710,7 @@ function debugSpecificWhitelistEmail() {
     ? DEBUG_EMAIL.trim().toLowerCase() 
     : Session.getActiveUser().getEmail().trim().toLowerCase();
 
-  const dataRange = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  const dataRange = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
   
   Logger.log(`Gesuchte E-Mail-Adresse: "${targetEmail}"`);
   Logger.log(`Untersuchtes Tabellenblatt: "${sheet.getName()}"`); 
@@ -714,9 +719,18 @@ function debugSpecificWhitelistEmail() {
   let gefunden = false;
   for (let i = 0; i < dataRange.length; i++) {
     const row = dataRange[i];
-    if (!row[3]) continue;
-    if (row[3].toString().trim().toLowerCase() === targetEmail) {
-      Logger.log(`✅ MATCH GEFUNDEN in Zeile ${i + 2}!`);
+    const primaryEmail = row[3] ? row[3].toString().trim().toLowerCase() : '';
+    const additionalEmails = (row[5] ? row[5].toString() : '')
+      .split(/[,;]/)
+      .map(e => e.trim().toLowerCase())
+      .filter(e => e.length > 0);
+    
+    const matchType = primaryEmail === targetEmail ? 'Spalte D (primär)'
+      : additionalEmails.includes(targetEmail) ? 'Spalte F (Zusatzadresse)'
+      : null;
+    
+    if (matchType) {
+      Logger.log(`✅ MATCH GEFUNDEN in Zeile ${i + 2} (${matchType})!`);
       const id = row[0] ? row[0].toString().trim() : 'Keine ID';
       const vorname = row[1] ? row[1].toString().trim() : '';
       const nachname = row[2] ? row[2].toString().trim() : '';
