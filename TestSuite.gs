@@ -26,6 +26,33 @@ const TEST_CONFIG = {
 };
 
 // ==========================================================================
+// EINSTIEGSPUNKT: STARTET DIE TESTSUITE ÜBER EINEN TRIGGER
+// ==========================================================================
+
+/**
+ * Diese Funktion manuell ausführen (statt runAllTests), um die Testsuite zu starten.
+ * Sie setzt den Fortschritt zurück und erstellt sofort einen Trigger, der runAllTests
+ * auslöst. So läuft bereits der erste Durchlauf getriggert ab – nicht erst der
+ * Fortsetzungs-Lauf nach dem ersten Timeout.
+ */
+function startAllTests() {
+  const userProperties = PropertiesService.getUserProperties();
+  userProperties.deleteProperty('TS_CURRENT_INDEX');
+  userProperties.deleteProperty('TS_RESULTS');
+
+  // Eventuell noch vorhandene alte Trigger entfernen
+  deleteTrigger('runAllTests');
+
+  // Sofort-Trigger erstellen, der den eigentlichen Testlauf auslöst
+  ScriptApp.newTrigger('runAllTests')
+           .timeBased()
+           .after(1000)
+           .create();
+
+  Logger.log("🚀 Testsuite-Start wurde per Trigger ausgelöst. runAllTests startet in Kürze...");
+}
+
+// ==========================================================================
 // HAUPTFUNKTION DER TESTSUITE (TIMEOUT-SICHER)
 // ==========================================================================
 
@@ -213,7 +240,7 @@ function resetTestSuite() {
   // Löscht auch eventuell noch wartende automatische Folge-Trigger
   deleteTrigger('runAllTests');
   
-  Logger.log("🔄 Testsuite erfolgreich zurückgesetzt! Der nächste Start von 'runAllTests' beginnt von vorn.");
+  Logger.log("🔄 Testsuite erfolgreich zurückgesetzt! Der nächste Start über 'startAllTests' beginnt von vorn.");
 }
 
 /**
