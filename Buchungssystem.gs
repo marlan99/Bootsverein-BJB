@@ -1,5 +1,5 @@
 // =============================================================================
-// BC1890 - Integriertes Gesamtskript: Reservierung, Onboarding & Tracking
+// BC1890 - Integriertes Gesamtskript: Buchung, Onboarding & Tracking
 // Google Apps Script für Google Calendar, Gmail, Drive & Google Spreadsheet
 // =============================================================================
 
@@ -7,12 +7,12 @@
 const PDF_SOURCE_URL = 'https://raw.githubusercontent.com/marlan99/Bootsverein-BJB/main/Anleitung%20Bootsreservation.pdf';
 
 const CONFIG = {
-  SYSTEM_FOLDER_NAME: 'Google Kalender Reservierungssystem', // Zentraler Ordnername im Google Drive
+  SYSTEM_FOLDER_NAME: 'Google Kalender Buchungssystem', // Zentraler Ordnername im Google Drive
   CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
   FORM_ID: '1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE', // Google-Formular für Web-Anmeldungen
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
-  GMAIL_LABEL: 'Reservierung/Neu',
-  EXCEL_TARGET_LABEL: 'Reservierung/Mitgliederliste',
+  GMAIL_LABEL: 'Buchung/Neu',
+  EXCEL_TARGET_LABEL: 'Buchung/Mitgliederliste',
   EXCEL_SUBJECT: 'Mitgliederliste',
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
@@ -20,14 +20,14 @@ const CONFIG = {
 };
 
 // =============================================================================
-// 1. KERN-LOGIK: RESERVIERUNGEN & STORNIERUNGEN VERARBEITEN (OPTIMIERT)
+// 1. KERN-LOGIK: BUCHUNGEN & STORNIERUNGEN VERARBEITEN (OPTIMIERT)
 // =============================================================================
 
 function processReservationEmails() {
   let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL) || createGmailLabelStructure(CONFIG.GMAIL_LABEL);
 
   // OPTIMIERUNG 1: Kombinierte Suchanfrage spart API-Quota und verhindert Doppelverarbeitung
-  const emailThreads = GmailApp.search('in:inbox (subject:"Reservierung" OR subject:"Stornierung")');
+  const emailThreads = GmailApp.search('in:inbox (subject:"Buchen" OR subject:"Stornieren")');
   Logger.log(`✅ Gefundene relevante Threads im Posteingang: ${emailThreads.length}`);
   
   // OPTIMIERUNG 2: Kalender-Instanz EINMALIG holen und wiederverwenden
@@ -67,8 +67,8 @@ function processReservationEmails() {
 
 // Batch-Label-Zuweisung & Archivierung (FÜR BUCHUNGEN & STORNIERUNGEN)
   if (threadsErledigt.length > 0) {
-    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') ||
-      GmailApp.createLabel('Reservierung/Erledigt');
+    const labelErledigt = GmailApp.getUserLabelByName('Buchung/Erledigt') ||
+      GmailApp.createLabel('Buchung/Erledigt');
     labelErledigt.addToThreads(threadsErledigt);
     if (labelNeu) {
       labelNeu.removeFromThreads(threadsErledigt);
@@ -77,8 +77,8 @@ function processReservationEmails() {
   }
   
   if (threadsAbgelehnt.length > 0) {
-    const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') ||
-      GmailApp.createLabel('Reservierung/Abgelehnt');
+    const labelAbgelehnt = GmailApp.getUserLabelByName('Buchung/Abgelehnt') ||
+      GmailApp.createLabel('Buchung/Abgelehnt');
     labelAbgelehnt.addToThreads(threadsAbgelehnt);
     if (labelNeu) {
       labelNeu.removeFromThreads(threadsAbgelehnt);
@@ -86,10 +86,10 @@ function processReservationEmails() {
     threadsAbgelehnt.forEach(thread => thread.moveToArchive());
   }
 
-  // Erfolgreiche Stornierungen gehen nun ebenfalls in 'Reservierung/Erledigt'
+  // Erfolgreiche Stornierungen gehen nun ebenfalls in 'Buchung/Erledigt'
   if (threadsStorniert.length > 0) {
-    const labelErledigt = GmailApp.getUserLabelByName('Reservierung/Erledigt') ||
-      GmailApp.createLabel('Reservierung/Erledigt');
+    const labelErledigt = GmailApp.getUserLabelByName('Buchung/Erledigt') ||
+      GmailApp.createLabel('Buchung/Erledigt');
     
     labelErledigt.addToThreads(threadsStorniert);
     if (labelNeu) {
@@ -124,7 +124,7 @@ function processSingleEmail(message, thread, calendar) {
   }
 
   // Mehrfach-Adressen pro Mitglied: userId kann die primäre ODER eine
-  // zusätzliche (nur reservierungsberechtigte) Adresse sein. Für jegliche
+  // zusätzliche (nur Buchungsberechtigte) Adresse sein. Für jegliche
   // Kommunikation (Bestätigung, Ablehnung, Kalender-Kontakt) wird IMMER die
   // primäre Adresse (Spalte D) verwendet, sofern das Mitglied gefunden wird.
   // Ist die Adresse nicht hinterlegt, bleibt commEmail die ursprünglich
@@ -234,7 +234,7 @@ function validateRequest(data, userId, sender, calendar) {
   if (!memberData) {
     return { 
       valid: false, 
-      error: `Deine E-Mail-Adresse (${userId}) ist nicht für das Reservierungssystem freigeschaltet. Bitte wende dich an den Vorstand.`
+      error: `Deine E-Mail-Adresse (${userId}) ist nicht für das Buchungssystem freigeschaltet. Bitte wende dich an den Vorstand.`
     };
   }
   
@@ -259,7 +259,7 @@ function validateRequest(data, userId, sender, calendar) {
           const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${startJahr}`;
           return { 
             valid: false, 
-            error: `Das Reservierungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.`
+            error: `Das Buchungssystem ist für das aktuelle Jahr noch nicht freigeschaltet. Buchungen sind erst ab dem ${formatiertesStartDatum} möglich.`
           };
         }
       }
@@ -381,7 +381,7 @@ function importExcelToSheets() {
   Logger.log(`✅ Prüfe Posteingang auf neue Excel-Listen... Gefunden: ${threads.length}`);
   const adminEmailLower = adminEmail.toLowerCase();
   const targetLabel = GmailApp.getUserLabelByName(CONFIG.EXCEL_TARGET_LABEL) || createGmailLabelStructure(CONFIG.EXCEL_TARGET_LABEL);
-  const errorLabel = GmailApp.getUserLabelByName('Reservierung/Abgelehnt') || GmailApp.createLabel('Reservierung/Abgelehnt');
+  const errorLabel = GmailApp.getUserLabelByName('Buchung/Abgelehnt') || GmailApp.createLabel('Buchung/Abgelehnt');
   
   for (let i = 0; i < threads.length; i++) {
     const thread = threads[i];
@@ -879,20 +879,19 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
     ${testNoticeHtml}
     Hallo ${name},<br><br>
     Herzlich Willkommen im <b>Bootsclub 1890</b>!<br><br>
-    Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Reservierungssystem freigeschaltet.<br><br>
-    Ab sofort kannst du Bootstermine direkt per E-Mail reservieren.
+    Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Buchungssystem freigeschaltet.<br><br>
+    Ab sofort kannst du Bootstermine direkt per E-Mail buchen.
     <br>
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Sende Reservierungen an: <b>${adminEmail}</b>.
-    Die E-Mail muss das Wort <b>Reservierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text enthalten.<br><br>
-    • Für eine Stornierung sende einfach das Wort <b>Stornierung</b> im Betreff und die Zeilen <b>Datum:</b> und <b>Slot:</b> (Vormittag/Nachmittag) als Text (bis max. 24 Stunden vor dem Termin).<br><br>
-    Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Reservierung vornimmst.<br><br>
+    • Buche das Boot über das Webformular</b>.
+    • Für eine Stornierung benutze ebenfalls dasselbe Webformular (bis max. 24 Stunden vor dem Termin möglich).<br><br>
+    Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Buchung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
     Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br>
     <b>Dein Vorstand</b><br>
   `;
-  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Reservierungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nBitte sende Reservierungen an ${adminEmail}.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
+  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Buchungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
   try {
     const options = {
       cc: finalCc, 
@@ -1049,7 +1048,7 @@ function ausfuehrenKalenderSynchronisierung() {
 // Versand fehl (z.B. wegen Google-Limitierungen), wird stattdessen ein Entwurf
 // im Thread abgelegt – analog zu sendRejectionEmail(). So wirft executeCancellation()
 // in diesen Fällen keine Exception mehr und der Thread wird korrekt mit
-// 'ABGELEHNT' bzw. dem Label 'Reservierung/Abgelehnt' verarbeitet.
+// 'ABGELEHNT' bzw. dem Label 'buchen/Abgelehnt' verarbeitet.
 function sendCancellationRejectionEmail(to, subject, body, thread) {
   try {
     GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
@@ -1075,7 +1074,7 @@ function executeCancellation(data, userId, thread, message) {
   const memberData = getAuthorizedUserData(userId);
   
   if (!memberData) {
-    sendCancellationRejectionEmail(userId, '❌ Löschen der Buchung abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
+    sendCancellationRejectionEmail(userId, '❌ Löschen der buchen abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
     return false;
   }
 
@@ -1109,7 +1108,7 @@ function executeCancellation(data, userId, thread, message) {
 
   if (userEvent) {
     if (userEvent.getTitle().toUpperCase().includes('JOKER')) {
-      sendCancellationRejectionEmail(commEmail, '❌ Löschen der Buchung fehlgeschlagen', `Joker-Termine können nicht automatisch storniert werden. Bitte wende dich an den Admin.`, thread);
+      sendCancellationRejectionEmail(commEmail, '❌ Löschen der Buchung fehlgeschlagen', `Joker-Termine können nicht automatisch storniert werden. Bitte wende dich dafür an den Vorstand.`, thread);
       return false;
     }
 
@@ -1119,13 +1118,13 @@ function executeCancellation(data, userId, thread, message) {
     // (z.B. wegen Google-Limitierungen) fehl, soll die Stornierung trotzdem als
     // erfolgreich gelten, da der Kalendereintrag bereits entfernt wurde.
     try {
-      GmailApp.sendEmail(commEmail, '✅ Bestätigung: Termin freigegeben', `Deine Reservierung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
+      GmailApp.sendEmail(commEmail, '✅ Bestätigung: Termin freigegeben', `Deine Buchung für den ${formatDateDDMMYYYY(data.parsedDate)} wurde erfolgreich storniert.`, { replyTo: CONFIG.ADMIN_EMAIL });
     } catch (mailError) {
       Logger.log(`⚠️ Kalendereintrag wurde storniert, aber Bestätigungsmail konnte nicht gesendet werden: ${mailError.message}`);
     }
     return true;
   } else {
-    sendCancellationRejectionEmail(commEmail, '❌ Löschen der Buchung fehlgeschlagen', `Es wurde kein passender aktiver Termin für dich an diesem Tag gefunden.`, thread);
+    sendCancellationRejectionEmail(commEmail, '❌ Löschen der Buchung fehlgeschlagen', `Es wurde kein passender, aktiver Termin von dir an diesem Tag gefunden.`, thread);
     return false;
   }
 }
@@ -1177,7 +1176,7 @@ function sendConfirmationEmail(to, event, data, thread) {
 
 function sendRejectionEmail(to, reason, thread) {
   const subject = '❌ Buchung abgelehnt';
-  const body = `Hallo,\n\nleider konnte deine Reservierung nicht angenommen werden:\n\nGrund: ${reason}`;
+  const body = `Hallo,\n\nleider konnte deine Buchung nicht angenommen werden:\n\nGrund: ${reason}`;
   try {
     // 1. Versuch: Direkt senden
     GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
@@ -1251,7 +1250,7 @@ function getAuthorizedUserData(email) {
       if (!primaryEmail) continue;
 
       // Spalte F (Index 5): optionale Zusatzadresse(n), Komma- oder Semikolon-
-      // getrennt. Diese dürfen NUR Reservierungen/Stornierungen auslösen,
+      // getrennt. Diese dürfen NUR Buchungen/Stornierungen auslösen,
       // sind aber nie Empfänger von System-Mails (siehe processSingleEmail /
       // executeCancellation, dort wird immer memberData.primaryEmail genutzt).
       const additionalRaw = dataRange[i][5] ? dataRange[i][5].toString() : '';
@@ -1335,7 +1334,7 @@ function sendDailyReservationReminders() {
       // 1. Definiere den Inhalt als echtes HTML für moderne Mail-Clients
       let htmlInhalt = `
         <p>Hallo!</p>
-        <p>Automatische Erinnerung für deine Reservierung morgen:</p>
+        <p>Automatische Erinnerung für deine Buchung morgen:</p>
         <ul>
           <li>&#128197; <strong>Datum:</strong> ${terminDatum}</li>
           <li>&#9200; <strong>Slot:</strong> ${slotName}</li>
@@ -1344,7 +1343,7 @@ function sendDailyReservationReminders() {
       `;
 
       // 2. Erstelle einen einfachen Text-Fallback (falls ein Client kein HTML unterstützt)
-      let textFallback = `Hallo!\n\nAutomatische Erinnerung für deine Reservierung morgen:\n📅 Datum: ${terminDatum}\n⏰ Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
+      let textFallback = `Hallo!\n\nAutomatische Erinnerung für deine Buchung morgen:\n📅 Datum: ${terminDatum}\n⏰ Slot: ${slotName}\n\nViel Spass mit dem Boot!`;
 
       // 3. Sende die E-Mail mit der htmlBody-Option an das Mitglied
       GmailApp.sendEmail(
@@ -1560,7 +1559,7 @@ function getSlotLabelForEvent(event) {
 // Wird per Formular-Trigger (siehe setupTriggers()) bei jeder neuen
 // Formular-Antwort ausgelöst. Erzeugt eine E-Mail im selben Klartext-Format,
 // das parseEmailTemplate() weiter oben erwartet ("Datum:", "Slot:", ...),
-// damit Web-Anmeldungen genauso wie manuelle Reservierungs-Mails verarbeitet werden.
+// damit Web-Anmeldungen genauso wie manuelle Buchungs-Mails verarbeitet werden.
 
 function sendeFormularAntwortenPerMail(e) {
   // Das Formular über die ID ansteuern
@@ -1626,7 +1625,7 @@ function sendeFormularAntwortenPerMail(e) {
   var antwortenLink = form.getSummaryUrl();
 
   // Den Inhalt der E-Mail vorbereiten
-  var subject = "⛵ Neue Reservierung (" + form.getTitle() + ")";
+  var subject = "⛵ Neue Buchung (" + form.getTitle() + ")";
   if (buchung.includes("Stornierung")) {
     subject = "⛵ Neue Stornierung (" + form.getTitle() + ")";
   }
@@ -1734,7 +1733,7 @@ function setupTriggers() {
     }
   }
   
-  [CONFIG.GMAIL_LABEL, 'Reservierung/Erledigt', 'Reservierung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
+  [CONFIG.GMAIL_LABEL, 'Buchung/Erledigt', 'Buchung/Abgelehnt', CONFIG.EXCEL_TARGET_LABEL].forEach(label => {
     if (!GmailApp.getUserLabelByName(label)) createGmailLabelStructure(label);
   });
 
