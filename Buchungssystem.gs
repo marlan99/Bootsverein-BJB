@@ -138,7 +138,7 @@ function processSingleEmail(message, thread, calendar) {
   }
 
   // Erleichterte Erkennung von Stornierungen
-  if (subject.includes('stornierung') || subject.includes('absage')) {
+  if (subject.includes('stornieren')) {
     const cancellationSuccess = executeCancellation(data, userId, thread, message);
     return cancellationSuccess ? 'STORNIERT' : 'ABGELEHNT';
   }
