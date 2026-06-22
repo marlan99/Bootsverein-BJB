@@ -1,6 +1,6 @@
 /**
  * TestSuiteAndDebug.gs
- * Automatisiertes Testskript & Whitelist-Check für das E-Mail-basierte Reservierungssystem
+ * Automatisiertes Testskript & Whitelist-Check für das E-Mail-basierte Buchungssystem
  */
 
 // ==========================================================================
@@ -14,7 +14,7 @@ const DEBUG_EMAIL = "";
 // Konfiguration für die Testsuite: Hier kannst du jeden Test einzeln steuern
 const TEST_CONFIG = {
   RUN_TEST_WHITELIST_CHECK: true,         // ID 0 – Prüft, ob DEBUG_EMAIL in der Whitelist existiert
-  RUN_TEST_VALID_RESERVATION: true,       // ID 1,2,5 – Gültige Reservierung & Zusatzinfos
+  RUN_TEST_VALID_RESERVATION: true,       // ID 1,2,5 – Gültige Buchung & Zusatzinfos
   RUN_TEST_STANDARD_LIMIT: true,          // ID 3 – Saison-Limit (1 aktiver Termin parallel)
   RUN_TEST_SLOT_TIMES: true,              // ID 8 – Slot-Zeiten (Vormittag = 08:00-14:00)
   RUN_TEST_INVALID_FORMAT: true,          // ID 9 – Intuitive Fehlermeldung bei Falschformat
@@ -89,7 +89,7 @@ function runAllTests() {
       exec: () => testWhitelistCheck()
     },
     { 
-      name: 'ID 1,2,5 – Gültige Reservierung & Zusatzinfos',
+      name: 'ID 1,2,5 – Gültige Buchung & Zusatzinfos',
       config: TEST_CONFIG.RUN_TEST_VALID_RESERVATION,
       exec: () => { cleanupOldTestMails();
                     return testValidReservation(); }
@@ -220,7 +220,7 @@ function runAllTests() {
     emailBody += logLine + '\n';
   });
   if (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_EMAIL && totalActive > 0) {
-    MailApp.sendEmail(CONFIG.ADMIN_EMAIL, `Testbericht Reservierungssystem: ${passed}/${totalActive}`, emailBody);
+    MailApp.sendEmail(CONFIG.ADMIN_EMAIL, `Testbericht Buchungssystem: ${passed}/${totalActive}`, emailBody);
     Logger.log(`\nTestbericht erfolgreich an ${CONFIG.ADMIN_EMAIL} gesendet.`);
   }
 
@@ -291,7 +291,7 @@ function executeSingleDateFormatTest(item) {
 
   const formattedDateString = getFutureDate(item.daysOut, item.type);
   createTestEmail({
-    subject: 'Reservierung',
+    subject: 'Buchen',
     body: `Datum: ${formattedDateString}\nSlot: ${item.slot}\nTyp: Standard\nBeschreibung: Europäisches Format-Test ${item.type}`
   });
   
@@ -374,7 +374,7 @@ function testWhitelistCheck() {
 function testValidReservation() {
   const testDate = getFutureDate(10, 'DOT_LEAD');
   createTestEmail({
-    subject: 'Reservierung',
+    subject: 'Buchen',
     body: `Datum: ${testDate}\nSlot: Vormittag\nTyp: Standard\nBeschreibung: Testlauf Hauptfunktion\nAnlass: Automatisierung`
   });
   labelTestEmails();
@@ -387,7 +387,7 @@ function testValidReservation() {
   const calendar = (typeof CONFIG !== 'undefined' && CONFIG.CALENDAR_ID) ? 
     CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
 
-  if (!calendar) return { name: 'ID 1,2,5 – Gültige Reservierung & Zusatzinfos', passed: false, message: 'Kalender konnte nicht geladen werden.' };
+  if (!calendar) return { name: 'ID 1,2,5 – Gültige Buchung & Zusatzinfos', passed: false, message: 'Kalender konnte nicht geladen werden.' };
 
   const parts = testDate.split('.');
   const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
@@ -396,7 +396,7 @@ function testValidReservation() {
 
   const passed = !!event && event.getDescription().includes('Testlauf Hauptfunktion') && event.getDescription().includes('Automatisierung');
   return {
-    name: 'ID 1,2,5 – Gültige Reservierung & Zusatzinfos',
+    name: 'ID 1,2,5 – Gültige Buchung & Zusatzinfos',
     passed: passed,
     message: passed ?
       'Event mit deinem Whitelist-Namen und Zusatzinfos im Kalender gefunden.' : 'Event unvollständig oder nicht erstellt.'
@@ -415,7 +415,7 @@ function testStandardLimit() {
   processReservationEmails();
 
   Utilities.sleep(2000);
-  const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
+  const labelAbgelehnt = GmailApp.getUserLabelByName('Buchung/Abgelehnt');
   let passed = false;
   if (labelAbgelehnt) {
     const threads = labelAbgelehnt.getThreads(0, 10);
@@ -426,7 +426,7 @@ function testStandardLimit() {
     name: 'ID 3 – Saison-Limit (Max. 1 aktiver Standard-Termin parallel)',
     passed: passed,
     message: passed ?
-      'Zweite Reservierung wurde blockiert, da bereits ein aktiver Termin in der Saison existiert.' : 'Sperre für parallele Termine griff nicht.'
+      'Zweite Buchung wurde blockiert, da bereits ein aktiver Termin in der Saison existiert.' : 'Sperre für parallele Termine griff nicht.'
   };
 }
 
@@ -464,14 +464,14 @@ function testSlotTimes() {
 
 function testInvalidFormat() {
   createTestEmail({
-    subject: 'Reservierung',
+    subject: 'Buchen',
     body: `Hallo, ich würde gerne nächsten Dienstag kommen. Schöne Grüße, Chaos-User.`
   });
   labelTestEmails();
   processReservationEmails();
 
   Utilities.sleep(2000);
-  const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
+  const labelAbgelehnt = GmailApp.getUserLabelByName('Buchung/Abgelehnt');
   const passed = labelAbgelehnt ? labelAbgelehnt.getThreads().length > 0 : false;
   return {
     name: 'ID 9 – Intuitive Fehlermeldung bei Falschformat',
@@ -508,7 +508,7 @@ function testSuccessfulCancellation() {
   labelTestEmails();
   processReservationEmails();
   createTestEmail({ 
-    subject: 'Stornierung Boot', 
+    subject: 'Stornieren Boot', 
     body: `Datum: ${targetDate}\nSlot: Nachmittag` 
   });
   labelTestEmails();
@@ -543,14 +543,14 @@ function testRejectedCancellation() {
   labelTestEmails();
   processReservationEmails();
   createTestEmail({ 
-    subject: 'Stornierung Termin', 
+    subject: 'Termin Stornieren', 
     body: `Datum: ${tomorrowDate}\nSlot: Nachmittag` 
   });
   labelTestEmails();
   processReservationEmails();
   Utilities.sleep(2000);
   
-  const labelAbgelehnt = GmailApp.getUserLabelByName('Reservierung/Abgelehnt');
+  const labelAbgelehnt = GmailApp.getUserLabelByName('Buchung/Abgelehnt');
   const passed = labelAbgelehnt ? labelAbgelehnt.getThreads().length > 0 : false;
   return {
     name: 'ID 11 – Abgelehnte Stornierung (24h-Frist verletzt)',
@@ -619,14 +619,14 @@ function getFutureDate(days, format) {
   }
 }
 
-function createTestEmail({subject = 'Reservierung', body}) {
+function createTestEmail({subject = 'Buchen', body}) {
   MailApp.sendEmail(Session.getActiveUser().getEmail(), subject, body);
 }
 
 function labelTestEmails() {
   Utilities.sleep(3500);
-  const threads = GmailApp.search('is:unread from:me (subject:"Reservierung" OR subject:"Stornierung")');
-  const label = GmailApp.getUserLabelByName("Reservierung/Neu");
+  const threads = GmailApp.search('is:unread from:me (subject:"Buchen" OR subject:"Stornieren")');
+  const label = GmailApp.getUserLabelByName("Buchung/Neu");
   if (label && threads.length > 0) {
     label.addToThreads(threads);
   }
@@ -634,15 +634,15 @@ function labelTestEmails() {
 }
 
 function cleanupOldTestMails() {
-  const labelNeu = GmailApp.getUserLabelByName("Reservierung/Neu");
-  const labelErledigt = GmailApp.getUserLabelByName("Reservierung/Erledigt");
-  const labelAbgelehnt = GmailApp.getUserLabelByName("Reservierung/Abgelehnt");
+  const labelNeu = GmailApp.getUserLabelByName("Buchung/Neu");
+  const labelErledigt = GmailApp.getUserLabelByName("Buchung/Erledigt");
+  const labelAbgelehnt = GmailApp.getUserLabelByName("Buchung/Abgelehnt");
   
-  const archivLabelName = "Reservierung/Test-Archiv";
+  const archivLabelName = "Buchung/Test-Archiv";
   let labelArchiv = GmailApp.getUserLabelByName(archivLabelName);
   if (!labelArchiv) { labelArchiv = GmailApp.createLabel(archivLabelName); }
   
-  const threads = GmailApp.search('from:me "Reservierung" OR "Stornierung"');
+  const threads = GmailApp.search('from:me "Buchen" OR "Stornieren"');
   threads.forEach(thread => {
     if(labelNeu) labelNeu.removeFromThread(thread);
     if(labelErledigt) labelErledigt.removeFromThread(thread);
