@@ -884,8 +884,8 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
     <br>
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Buche das Boot über das Webformular</b>.
-    • Für eine Stornierung benutze ebenfalls dasselbe Webformular (bis max. 24 Stunden vor dem Termin möglich).<br><br>
+    • Buche das Boot über das <a href="https://docs.google.com/forms/d/e/${CONFIG.FORM_ID}/viewform">Webformular</a></b>.
+    • Für eine Stornierung benutze ebenfalls dasselbe <a href="https://docs.google.com/forms/d/e/${CONFIG.FORM_ID}/viewform">Webformular</a> (bis max. 24 Stunden vor dem Termin möglich).<br><br>
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Buchung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
     Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br>
