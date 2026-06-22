@@ -1625,9 +1625,9 @@ function sendeFormularAntwortenPerMail(e) {
   var antwortenLink = form.getSummaryUrl();
 
   // Den Inhalt der E-Mail vorbereiten
-  var subject = "⛵ Neue Buchung (" + form.getTitle() + ")";
-  if (buchung.includes("Stornierung")) {
-    subject = "⛵ Neue Stornierung (" + form.getTitle() + ")";
+  var subject = "⛵ Buchen (" + form.getTitle() + ")";
+  if (buchung.includes("Stornieren")) {
+    subject = "⛵ Stornieren (" + form.getTitle() + ")";
   }
 
   // Der HTML-Body
