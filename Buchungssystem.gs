@@ -5,18 +5,19 @@
 
 // Globale URL-Quelle für die PDF-Anleitung
 const PDF_SOURCE_URL = 'https://raw.githubusercontent.com/marlan99/Bootsverein-BJB/main/Anleitung%20Bootsreservation.pdf';
+const props = PropertiesService.getScriptProperties();
 
 const CONFIG = {
-  FORM_ID: '1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE', // Google-Formular für Web-Anmeldungen
-  CALENDAR_ID: '',  // Hier die KALENDER ID eintragen, falls nicht der Standardkalender verwendet wird
-  SYSTEM_FOLDER_NAME: 'Google Kalender Buchungssystem', // Ordnername im Google Drive für die Speicherung der Mitgliederliste
+  FORM_ID: props.getProperty('FORM_ID') || '',
+  CALENDAR_ID: props.getProperty('CALENDAR_ID') || '',
+  SYSTEM_FOLDER_NAME: 'Google Kalender Buchungssystem', // Ordnername im Google Drive
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
   GMAIL_LABEL: 'Buchung/Neu',
   EXCEL_TARGET_LABEL: 'Buchung/Mitgliederliste',
   EXCEL_SUBJECT: 'Mitgliederliste',
   SLOT_VORMITTAG: { start: '08:00', end: '14:00' },
   SLOT_NACHMITTAG: { start: '14:00', end: '20:00' },
-  TEST_MODUS_AKTIV: false, // true → Testmodus: Das Onboarding Mail wird statt an das Mitglied an den Admin umgeleitet
+  TEST_MODUS_AKTIV: props.getProperty('TEST_MODUS_AKTIV') === 'true', // Testmodus wird nur dann aktiviert wenn das Wort true in den properties steht
 };
 
 // =============================================================================
@@ -1685,10 +1686,41 @@ function sendeFormularAntwortenPerMail(e) {
   }
 }
 
+// =============================================================================
+// XI. ID erstellen: DIVERSE PROPERTIES WERDEN ERSTELLT UM DIE WARTUNG ZU VEREINFACHEN
+// =============================================================================
+function setPropertiesId() {
+  const props = PropertiesService.getScriptProperties();
+  
+  if (!props.getProperty('FORM_ID')) {
+    props.setProperty('FORM_ID', '');
+    Logger.log('✅ FORM_ID wurde in den Skripteigenschaften gespeichert.');
+  } else {
+    Logger.log('ℹ️ FORM_ID existiert bereits – keine Änderung vorgenommen.');
+  }
+
+  if (!props.getProperty('CALENDAR_ID')) {
+    props.setProperty('CALENDAR_ID', '');
+    Logger.log('✅ CALENDAR_ID wurde in den Skripteigenschaften gespeichert.');
+  } else {
+    Logger.log('ℹ️ CALENDAR_ID existiert bereits – keine Änderung vorgenommen.');
+  }
+
+  if (!props.getProperty('TEST_MODUS_AKTIV')) {
+    props.setProperty('TEST_MODUS_AKTIV', 'false');  // Erlaubte Werte: 'true' oder 'false'
+    Logger.log('✅ TEST_MODUS_AKTIV wurde in den Skripteigenschaften gespeichert.');
+  } else {
+    Logger.log('ℹ️ TEST_MODUS_AKTIV existiert bereits – keine Änderung vorgenommen.');
+  }
+}
+
 function setupTriggers() {
   Logger.log('========================================================================');
   Logger.log('🚀 STARTE CENTRAL SYSTEM SETUP...');
   Logger.log('========================================================================');
+
+  // Skripteigenschaften initialisieren (nur falls noch nicht vorhanden)
+  setPropertiesId();
 
   // Initialisiert das frühestmögliche Buchungsdatum beim Setup
   if (typeof setEarliestBookingDate === 'function') {
