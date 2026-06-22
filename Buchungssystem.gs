@@ -1714,8 +1714,8 @@ function setPropertiesId() {
   }
 
   if (!props.getProperty('CALENDAR_ID')) {
-    props.setProperty('CALENDAR_ID', '');
-    Logger.log('✅ CALENDAR_ID wurde in den Skripteigenschaften gespeichert.');
+    props.setProperty('CALENDAR_ID', Session.getActiveUser().getEmail());
+    Logger.log('✅ CALENDAR_ID wurde mit der E-Mail des aktiven Benutzers gespeichert.');
   } else {
     Logger.log('ℹ️ CALENDAR_ID existiert bereits – keine Änderung vorgenommen.');
   }
