@@ -5,10 +5,10 @@
 
 // Globale URL-Quelle für die PDF-Anleitung
 const PDF_SOURCE_URL = 'https://raw.githubusercontent.com/marlan99/Bootsverein-BJB/main/Anleitung%20Bootsreservation.pdf';
-const props = PropertiesService.getScriptProperties();
+const FORM_NAME = 'Boot Buchungsformular';  // Dateiname des Google Formulars in Drive
 
+const props = PropertiesService.getScriptProperties();
 const CONFIG = {
-  FORM_ID: props.getProperty('FORM_ID') || '',
   CALENDAR_ID: props.getProperty('CALENDAR_ID') || '',
   SYSTEM_FOLDER_NAME: 'Google Kalender Buchungssystem', // Ordnername im Google Drive
   ADMIN_EMAIL: Session.getActiveUser().getEmail(),
@@ -885,8 +885,8 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
     <br>
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Buche das Boot über das <a href="https://docs.google.com/forms/d/e/${CONFIG.FORM_ID}/viewform">Webformular</a></b>.
-    • Für eine Stornierung benutze ebenfalls dasselbe <a href="https://docs.google.com/forms/d/e/${CONFIG.FORM_ID}/viewform">Webformular</a> (bis max. 24 Stunden vor dem Termin möglich).<br><br>
+    • Buche das Boot über das Webformular</b>.
+    • Für eine Stornierung benutze ebenfalls dasselbe Webformular (bis max. 24 Stunden vor dem Termin möglich).<br><br>
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Buchung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
     Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br>
@@ -1564,7 +1564,7 @@ function getSlotLabelForEvent(event) {
 
 function sendeFormularAntwortenPerMail(e) {
   // Das Formular über die ID ansteuern
-  var form = FormApp.openById(CONFIG.FORM_ID);
+  var form = FormApp.openById(PropertiesService.getScriptProperties().getProperty('FORM_ID'));
 
   // Die allerletzte Antwort abgreifen, die gerade abgeschickt wurde
   var antworten = form.getResponses();
@@ -1689,14 +1689,28 @@ function sendeFormularAntwortenPerMail(e) {
 // =============================================================================
 // XI. ID erstellen: DIVERSE PROPERTIES WERDEN ERSTELLT UM DIE WARTUNG ZU VEREINFACHEN
 // =============================================================================
+function findFormIdByName() {
+  const files = DriveApp.getFilesByName(FORM_NAME);
+  if (files.hasNext()) {
+    const file = files.next();
+    Logger.log(`✅ Formular gefunden: "${file.getName()}" → ID: ${file.getId()}`);
+    return file.getId();
+  }
+  Logger.log(`❌ Kein Formular mit dem Namen "${FORM_NAME}" gefunden.`);
+  return null;
+}
+
 function setPropertiesId() {
   const props = PropertiesService.getScriptProperties();
   
   if (!props.getProperty('FORM_ID')) {
-    props.setProperty('FORM_ID', '');
-    Logger.log('✅ FORM_ID wurde in den Skripteigenschaften gespeichert.');
-  } else {
-    Logger.log('ℹ️ FORM_ID existiert bereits – keine Änderung vorgenommen.');
+    const formId = findFormIdByName();
+    if (formId) {
+      props.setProperty('FORM_ID', formId);
+      Logger.log('✅ FORM_ID wurde automatisch ermittelt und gespeichert.');
+    } else {
+      Logger.log('❌ FORM_ID konnte nicht gesetzt werden – Formular nicht gefunden.');
+    }
   }
 
   if (!props.getProperty('CALENDAR_ID')) {
@@ -1752,9 +1766,10 @@ function setupTriggers() {
   // Formular-Trigger (Web-Anmeldungen, siehe sendeFormularAntwortenPerMail() oben)
   // WICHTIG: Muss hier stehen, da oben ALLE bestehenden Trigger gelöscht werden -
   // ohne diesen Block würde der Formular-Trigger bei jedem Setup-Lauf verschwinden.
-  if (CONFIG.FORM_ID) {
+  const formId = PropertiesService.getScriptProperties().getProperty('FORM_ID');
+  if (formId) {
     try {
-      const webForm = FormApp.openById(CONFIG.FORM_ID);
+      const webForm = FormApp.openById(formId);
       ScriptApp.newTrigger('sendeFormularAntwortenPerMail')
                .forForm(webForm)
                .onFormSubmit()
