@@ -647,8 +647,8 @@ function testeFormularBuchung(testEmail) {
     // Eine neue Antwort-Instanz erstellen
     var formResponse = form.createResponse();
     
-    // E-Mail des Ausfüllenden setzen (Pflichtfeld – Formular ist auf "Verifiziert" konfiguriert)
-    formResponse.setRespondentEmail(testEmail);
+    // E-Mail: Bei "Verifiziert"-Einstellung übernimmt Google Forms automatisch
+    // die E-Mail des aktiven Session-Accounts – kein manuelles Setzen nötig/möglich.
     // 4. Antworten basierend auf der Index-Logik deines Hauptskripts zuweisen.
     //    Typ wird dynamisch ermittelt, damit LIST und MULTIPLE_CHOICE gleichermassen funktionieren.
     
