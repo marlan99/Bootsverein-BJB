@@ -623,10 +623,13 @@ function testScalability() {
  * @return {string} "Erfolg" oder "Fehler"
  */
 function testeFormularBuchung(testEmail) {
-  const formId = "1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE";
-  
   try {
-    // 1. Formular öffnen
+    // 1. Formular per Name suchen (konsistent mit findFormIdByName() im Hauptskript)
+    const formId = findFormIdByName();
+    if (!formId) {
+      console.error("❌ Formular-ID konnte nicht ermittelt werden. Bitte FORM_NAME prüfen.");
+      return "Fehler";
+    }
     var form = FormApp.openById(formId);
     var items = form.getItems();
     
