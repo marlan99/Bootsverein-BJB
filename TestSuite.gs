@@ -22,6 +22,7 @@ const TEST_CONFIG = {
   RUN_TEST_SUCCESSFUL_CANCELLATION: true, // ID 10 – Erfolgreiche Stornierung
   RUN_TEST_REJECTED_CANCELLATION: true,   // ID 11 – Abgelehnte Stornierung (24h-Frist)
   RUN_TEST_EUROPEAN_DATE_FORMATS: true,   // ID 12 – Flexibles europäisches Datums-Parsing
+  RUN_TEST_FORMULAR_BUCHUNG: true,        // ID 13 – Automatisierter Formular-Buchungstest
   RUN_SCALABILITY_TEST: false             // ID 7 – Skalierungstest (Systemstabilität)
 };
 
@@ -153,6 +154,21 @@ function runAllTests() {
       exec: () => executeSingleDateFormatTest({ type: 'DE_TEXT', daysOut: 9, slot: 'Nachmittag', desc: 'Textmonat mit Punkt' })
     },
     
+    {
+      name: 'ID 13 – Automatisierter Formular-Buchungstest',
+      config: TEST_CONFIG.RUN_TEST_FORMULAR_BUCHUNG,
+      exec: () => {
+        const result = testeFormularBuchung();
+        return {
+          name: 'ID 13 – Automatisierter Formular-Buchungstest',
+          passed: result === "Erfolg",
+          message: result === "Erfolg"
+            ? 'Test-Antwort wurde erfolgreich ins Formular eingetragen und onFormSubmit-Trigger ausgelöst.'
+            : 'Formular-Buchungstest fehlgeschlagen. Details im console-Log.'
+        };
+      }
+    },
+
     // Letzter Test
     { 
       name: 'ID 7 – Skalierungstest (Systemstabilität)',
@@ -593,6 +609,86 @@ function testScalability() {
     message: passed ?
       `System blieb stabil. ${loadEventsCount} Event(s) eingetragen. Verarbeitungszeit: ${durationInSeconds}s.` : `Fehlgeschlagen. Zeit überschritten (${durationInSeconds}s).`
   };
+}
+
+
+/* ==========================================================================
+   ID 13 – AUTOMATISIERTER FORMULAR-BUCHUNGSTEST
+   ========================================================================== */
+
+/**
+ * Sendet vollautomatisiert eine Test-Antwort an das Buchungsformular.
+ *
+ * @param {string} [testEmail] - Optionale Gmail-Adresse. Wenn leer, wird der eigene Account genutzt.
+ * @return {string} "Erfolg" oder "Fehler"
+ */
+function testeFormularBuchung(testEmail) {
+  const formId = "1g2Ij65-zo0jL8T0hi0yufe8J77iNVVZLawOyivDlFuE";
+  
+  try {
+    // 1. Formular öffnen
+    var form = FormApp.openById(formId);
+    var items = form.getItems();
+    
+    // 2. Falls keine E-Mail übergeben wurde, die eigene Mailadresse ermitteln
+    if (!testEmail) {
+      testEmail = Session.getActiveUser().getEmail();
+    }
+    
+    // 3. Testdaten vorbereiten (Heute + 3 Tage)
+    var zielDatum = new Date();
+    zielDatum.setDate(zielDatum.getDate() + 3);
+    // Format YYYY-MM-DD wird von Datumsfeldern in Google Forms erwartet
+    var datumString = Utilities.formatDate(zielDatum, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    
+    // Eine neue Antwort-Instanz erstellen
+    var formResponse = form.createResponse();
+    
+    // Falls die E-Mail-Erfassung im Formular auf "Verifiziert" oder "Vom Responder eingegeben" steht
+    try {
+      formResponse.setRespondentEmail(testEmail);
+    } catch(e) {
+      // Falls die E-Mail-Erfassung im Formular deaktiviert ist, ignoriert das Skript diesen Fehler
+      console.log("Hinweis: E-Mail-Erfassung ist im Formular nicht aktiv oder erzwungen.");
+    }
+    // 4. Antworten basierend auf der Index-Logik deines Hauptskripts zuweisen
+    
+    // Index 0: Buchung / Stornierung
+    if (items.length > 0) {
+      var item0 = items[0].asListItem(); // Angenommen es ist ein Dropdown/Multiple-Choice
+      var choices0 = item0.getChoices();
+      // Nimmt den ersten Eintrag (z.B. "Buchen") oder sucht nach einem passenden Begriff
+      var wahl0 = choices0[0].getValue(); 
+      formResponse.withItemResponse(item0.createResponse(wahl0));
+    }
+    
+    // Index 1: Datum
+    if (items.length > 1) {
+      var item1 = items[1].asDateItem();
+      formResponse.withItemResponse(item1.createResponse(zielDatum));
+    }
+    
+    // Index 2: Slot (Nachmittag)
+    if (items.length > 2) {
+      var item2 = items[2].asListItem(); // oder asMultipleChoiceItem()
+      formResponse.withItemResponse(item2.createResponse("Nachmittag"));
+    }
+    
+    // Index 3: Beschreibung / Typ-Prüfung
+    if (items.length > 3) {
+      var item3 = items[3].asTextItem(); // oder entsprechendes Feld
+      formResponse.withItemResponse(item3.createResponse("Automatischer Testlauf via Testsuite"));
+    }
+    // 5. Antwort absenden (Das triggert im Live-Betrieb deinen installierten onFormSubmit-Trigger)
+    formResponse.submit();
+    
+    console.info("✅ Test-Antwort erfolgreich in das Formular eingetragen.");
+    return "Erfolg";
+    
+  } catch (error) {
+    console.error("❌ Fehler beim Ausführen des automatisierten Formular-Tests: " + error.message);
+    return "Fehler";
+  }
 }
 
 
