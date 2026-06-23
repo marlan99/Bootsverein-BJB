@@ -647,40 +647,55 @@ function testeFormularBuchung(testEmail) {
     // Eine neue Antwort-Instanz erstellen
     var formResponse = form.createResponse();
     
-    // Falls die E-Mail-Erfassung im Formular auf "Verifiziert" oder "Vom Responder eingegeben" steht
-    try {
-      formResponse.setRespondentEmail(testEmail);
-    } catch(e) {
-      // Falls die E-Mail-Erfassung im Formular deaktiviert ist, ignoriert das Skript diesen Fehler
-      console.log("Hinweis: E-Mail-Erfassung ist im Formular nicht aktiv oder erzwungen.");
-    }
-    // 4. Antworten basierend auf der Index-Logik deines Hauptskripts zuweisen
+    // E-Mail des Ausfüllenden setzen (Pflichtfeld – Formular ist auf "Verifiziert" konfiguriert)
+    formResponse.setRespondentEmail(testEmail);
+    // 4. Antworten basierend auf der Index-Logik deines Hauptskripts zuweisen.
+    //    Typ wird dynamisch ermittelt, damit LIST und MULTIPLE_CHOICE gleichermassen funktionieren.
     
+    // Hilfsfunktion: erstellt eine ItemResponse für List- oder MultipleChoice-Items
+    function choiceResponse(item, value) {
+      const t = item.getType();
+      if (t === FormApp.ItemType.LIST) {
+        return item.asListItem().createResponse(value);
+      } else if (t === FormApp.ItemType.MULTIPLE_CHOICE) {
+        return item.asMultipleChoiceItem().createResponse(value);
+      }
+      throw new Error(`Unbekannter Choice-Typ an Index ${item.getIndex()}: ${t}`);
+    }
+
     // Index 0: Buchung / Stornierung
     if (items.length > 0) {
-      var item0 = items[0].asListItem(); // Angenommen es ist ein Dropdown/Multiple-Choice
-      var choices0 = item0.getChoices();
-      // Nimmt den ersten Eintrag (z.B. "Buchen") oder sucht nach einem passenden Begriff
-      var wahl0 = choices0[0].getValue(); 
-      formResponse.withItemResponse(item0.createResponse(wahl0));
+      const t0 = items[0].getType();
+      let choices0;
+      if (t0 === FormApp.ItemType.LIST) {
+        choices0 = items[0].asListItem().getChoices();
+      } else if (t0 === FormApp.ItemType.MULTIPLE_CHOICE) {
+        choices0 = items[0].asMultipleChoiceItem().getChoices();
+      } else {
+        throw new Error(`Unerwarteter Typ an Index 0: ${t0}`);
+      }
+      // Ersten Eintrag nehmen (z.B. "Buchen")
+      formResponse.withItemResponse(choiceResponse(items[0], choices0[0].getValue()));
     }
     
     // Index 1: Datum
     if (items.length > 1) {
-      var item1 = items[1].asDateItem();
-      formResponse.withItemResponse(item1.createResponse(zielDatum));
+      formResponse.withItemResponse(items[1].asDateItem().createResponse(zielDatum));
     }
     
     // Index 2: Slot (Nachmittag)
     if (items.length > 2) {
-      var item2 = items[2].asListItem(); // oder asMultipleChoiceItem()
-      formResponse.withItemResponse(item2.createResponse("Nachmittag"));
+      formResponse.withItemResponse(choiceResponse(items[2], "Nachmittag"));
     }
     
-    // Index 3: Beschreibung / Typ-Prüfung
+    // Index 3: Joker-Checkbox (beim Testlauf nicht ankreuzen)
     if (items.length > 3) {
-      var item3 = items[3].asTextItem(); // oder entsprechendes Feld
-      formResponse.withItemResponse(item3.createResponse("Automatischer Testlauf via Testsuite"));
+      formResponse.withItemResponse(items[3].asCheckboxItem().createResponse([]));
+    }
+
+    // Index 4: Beschreibung (optional, Kurzantwort-Text)
+    if (items.length > 4) {
+      formResponse.withItemResponse(items[4].asTextItem().createResponse("Automatischer Testlauf via Testsuite"));
     }
     // 5. Antwort absenden (Das triggert im Live-Betrieb deinen installierten onFormSubmit-Trigger)
     formResponse.submit();
