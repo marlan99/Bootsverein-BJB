@@ -1736,6 +1736,7 @@ function processFormSubmissionDirekt(e) {
       const auditThread = gefundeneThreads[0];
       if (auditLabel) auditThread.addLabel(auditLabel);
       auditThread.markRead();
+      auditThread.moveToArchive();
     } else {
       Logger.log(`⚠️ Audit-Mail für Referenz [ref:${responseId}] konnte zum Labeln/Markieren nicht wiedergefunden werden.`);
     }
