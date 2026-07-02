@@ -750,7 +750,7 @@ function sendChangeReportMail(adminEmail, added, removed, updated) {
 // =============================================================================
 
 function checkAndWelcomeNewMembers() {
-  const modusText = CONFIG.TEST_MODUS_AKTIV ?
+  const modusText = CONFIG. ?
     '⚠️ TESTMODUS (AKTIV)' : '🚀 LIVE-BETRIEB';
   Logger.log(`=== STARTE PRÜFUNG AUF NEUE MITGLIEDER [Modus: ${modusText}] ===`);
   
@@ -863,7 +863,7 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
   let testNoticeHtml = '';
   let testNoticePlain = '';
 
-  if (CONFIG.TEST_MODUS_AKTIV) {
+  if (CONFIG.) {
     finalReceiver = adminEmail;
     finalCc = '';
     subject = `[TEST-MODUS für: ${toEmail}] ⛵ Herzlich Willkommen beim Bootsclub 1890!`;
@@ -1720,7 +1720,7 @@ function setPropertiesId() {
   }
 
   if (!props.getProperty('TEST_MODUS_AKTIV')) {
-    props.setProperty('TEST_MODUS_AKTIV', 'false');  // Erlaubte Werte: 'true' oder 'false'
+    props.setProperty('TEST_MODUS_AKTIV', 'true');  // Erlaubte Werte: 'true' oder 'false'
     Logger.log('✅ TEST_MODUS_AKTIV wurde in den Skripteigenschaften gespeichert.');
   } else {
     Logger.log('ℹ️ TEST_MODUS_AKTIV existiert bereits – keine Änderung vorgenommen.');
