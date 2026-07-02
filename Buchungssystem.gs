@@ -1679,7 +1679,7 @@ function sendeFormularAntwortenPerMail(e) {
     GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, plainBody, advancedOptions);
     console.info(`✅ Neue Buchungsanfrage als Mail weitergeleitet.`);
 
-    // Utilities.sleep(3000); // 3 Sekunden
+    Utilities.sleep(3000); // 3 Sekunden
 
     try {
       Logger.log("⚡ Starte sofortige Verarbeitung der soeben eingegangenen Buchungsanfrage...");
