@@ -885,7 +885,7 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
     <br>
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Buche das Boot über das Webformular</b>.
+    • Buche das Boot über das Webformular</b>.<br>
     • Für eine Stornierung benutze ebenfalls dasselbe Webformular (bis max. 24 Stunden vor dem Termin möglich).<br><br>
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Buchung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
