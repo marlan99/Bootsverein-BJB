@@ -1574,8 +1574,176 @@ function getSlotLabelForEvent(event) {
 }
 
 // =============================================================================
-// X. WEB-ANMELDUNGEN: GOOGLE-FORMS-ANTWORTEN PER MAIL WEITERLEITEN
+// X. WEB-ANMELDUNGEN: GOOGLE-FORMS-ANTWORTEN
 // =============================================================================
+// Verarbeitet eine Formular-Buchung DIREKT.
+// Wird als onFormSubmit-Trigger ausgelöst. Erstellt für JEDE Einreichung zusätzlich
+// eine Audit-Mail mit Label "Buchung/Webformular", die sofort als gelesen markiert wird.
+function processFormSubmissionDirekt(e) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const formId = scriptProperties.getProperty('FORM_ID');
+  const form = FormApp.openById(formId);
+
+  // Letzte (gerade eingegangene) Antwort auslesen
+  const antworten = form.getResponses();
+  const letzteAntwort = antworten[antworten.length - 1];
+  const einzelAntworten = letzteAntwort.getItemResponses();
+  const antwortenLink = form.getSummaryUrl();
+  const zeitstempel = Utilities.formatDate(letzteAntwort.getTimestamp(), Session.getScriptTimeZone(), "dd.MM.yyyy HH:mm");
+  const responseId = letzteAntwort.getId(); // eindeutige ID für den Audit-Mail-Abgleich
+
+  // Felder wie bisher nach Index auslesen
+  let buchung = "-";
+  let datumRaw = "-";
+  let slotRaw = "-";
+  let typ = ""; // Standardmäßig leer, falls kein "Joker" gewählt wurde
+  let beschreibung = "-";
+
+  if (einzelAntworten.length > 0) buchung = einzelAntworten[0].getResponse();
+  if (einzelAntworten.length > 1) datumRaw = einzelAntworten[1].getResponse();
+  if (einzelAntworten.length > 2) slotRaw = einzelAntworten[2].getResponse();
+
+  if (einzelAntworten.length > 3) {
+    const antwortIndex3 = einzelAntworten[3].getResponse();
+    if (antwortIndex3.includes("Joker Buchung (max. 2 pro Saison möglich)")) {
+      typ = "Joker";
+      if (einzelAntworten.length > 4) beschreibung = einzelAntworten[4].getResponse();
+    } else {
+      typ = "";
+      beschreibung = antwortIndex3;
+    }
+  }
+
+  const absenderEmail = letzteAntwort.getRespondentEmail() || null;
+  const istStornierung = buchung.includes("Stornieren");
+
+  // ─── data-Objekt analog zu parseEmailTemplate() aufbauen ───────────────
+  const data = { valid: true };
+
+  if (!absenderEmail) {
+    data.valid = false;
+    data.error = '❌ Keine E-Mail-Adresse im Formular erfasst (E-Mail-Erfassung im Formular prüfen).';
+  }
+
+  if (data.valid) {
+    const datumObjekt = new Date(datumRaw);
+    if (isNaN(datumObjekt.getTime())) {
+      data.valid = false;
+      data.error = `❌ Das übermittelte Datum ("${datumRaw}") konnte nicht verarbeitet werden.`;
+    } else {
+      datumObjekt.setHours(0, 0, 0, 0);
+      data.parsedDate = datumObjekt;
+    }
+  }
+
+  if (data.valid) {
+    data.slot = (slotRaw || '').toLowerCase().trim();
+    if (!['vormittag', 'nachmittag'].includes(data.slot)) {
+      data.valid = false;
+      data.error = `❌ Der übermittelte Slot ("${slotRaw}") ist ungültig.`;
+    }
+  }
+
+  if (data.valid) {
+    data.type = typ ? typ.toLowerCase().trim() : 'standard';
+    if (!['standard', 'joker'].includes(data.type)) {
+      data.valid = false;
+      data.error = `❌ Der übermittelte Typ ("${typ}") ist ungültig.`;
+    }
+  }
+
+  if (data.valid && beschreibung && beschreibung !== '-') {
+    data.description = beschreibung;
+  }
+
+  // ─── Buchung/Stornierung direkt verarbeiten ────────────────────────────
+  let verarbeitungsErgebnis = '-';
+
+  if (!data.valid) {
+    verarbeitungsErgebnis = `❌ Abgelehnt (${data.error})`;
+  } else if (istStornierung) {
+    const erfolg = executeCancellation(data, absenderEmail, null, null);
+    verarbeitungsErgebnis = erfolg ? '✅ Storniert' : '❌ Abgelehnt';
+  } else {
+    const calendar = CONFIG.CALENDAR_ID ? CalendarApp.getCalendarById(CONFIG.CALENDAR_ID) : CalendarApp.getDefaultCalendar();
+    const memberDataForComm = getAuthorizedUserData(absenderEmail);
+    const commEmail = memberDataForComm ? memberDataForComm.primaryEmail : absenderEmail;
+
+    const validation = validateRequest(data, absenderEmail, absenderEmail, calendar);
+    if (!validation.valid) {
+      sendRejectionEmail(commEmail, validation.error, null);
+      verarbeitungsErgebnis = `❌ Abgelehnt (${validation.error})`;
+    } else {
+      const event = createCalendarEvent(data, commEmail, calendar);
+      if (event) {
+        sendConfirmationEmail(commEmail, event, data, null);
+        verarbeitungsErgebnis = '✅ Gebucht';
+      } else {
+        sendRejectionEmail(commEmail, 'Fehler beim Erstellen des Termins im Google Kalender.', null);
+        verarbeitungsErgebnis = '❌ Abgelehnt (Kalenderfehler)';
+      }
+    }
+  }
+
+  // ─── Audit-Mail erstellen, labeln, als gelesen markieren ───────────────
+  const subjectPrefix = istStornierung ? "⛵ Stornieren" : "⛵ Buchen";
+  // Die [ref:...]-Referenz dient nur dem internen Wiederauffinden der Mail
+  // und wird zur Not vom Empfänger einfach ignoriert.
+  const subject = `${subjectPrefix} (${form.getTitle()}) [ref:${responseId}]`;
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.5;">
+        <h3 style="color: #0056b3; margin-top: 0;">Direkt verarbeitete Formular-Buchung:</h3>
+        <b>Eingegangen am:</b> ${zeitstempel}<br>
+        <b>Absender:</b> ${absenderEmail || 'Nicht erfasst / Anonym'}<br>
+        <b>Ergebnis:</b> ${verarbeitungsErgebnis}<br>
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
+        <b>Datum:</b> ${datumRaw}<br>
+        <b>Slot:</b> ${slotRaw}<br>
+        <b>Typ:</b> ${typ || 'Standard'}<br>
+        <b>Beschreibung:</b> ${beschreibung}<br>
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 15px 0;">
+        <p style="margin-bottom: 0;">
+          <a href="${antwortenLink}" style="color: #0056b3; text-decoration: none; font-weight: bold;">Bisherige Antworten im Formular ansehen</a>
+        </p>
+    </div>
+  `;
+
+  const plainBody =
+    `Direkt verarbeitete Formular-Buchung:\n` +
+    `Eingegangen am: ${zeitstempel}\n` +
+    `Absender: ${absenderEmail || 'Nicht erfasst / Anonym'}\n` +
+    `Ergebnis: ${verarbeitungsErgebnis}\n\n` +
+    `Datum: ${datumRaw}\n` +
+    `Slot: ${slotRaw}\n` +
+    `Typ: ${typ || 'Standard'}\n` +
+    `Beschreibung: ${beschreibung}\n\n` +
+    `Bisherige Antworten im Formular ansehen: ${antwortenLink}`;
+
+  try {
+    GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, plainBody, { htmlBody: htmlBody });
+
+    // Label sicherstellen (erstellt bei Bedarf auch das übergeordnete "Buchung"-Label mit)
+    const auditLabel = GmailApp.getUserLabelByName('Buchung/Webformular') || createGmailLabelStructure('Buchung/Webformular');
+
+    // Kurze Pause, um Gmail Zeit zur Indexierung zu geben, bevor die soeben
+    // gesendete Mail per GmailApp.search() wiedergefunden werden muss.
+    Utilities.sleep(2000);
+
+    // Die soeben gesendete Mail über die eindeutige Referenz im Betreff wiederfinden
+    const gefundeneThreads = GmailApp.search(`subject:"[ref:${responseId}]"`);
+    if (gefundeneThreads.length > 0) {
+      const auditThread = gefundeneThreads[0];
+      if (auditLabel) auditThread.addLabel(auditLabel);
+      auditThread.markRead();
+    } else {
+      Logger.log(`⚠️ Audit-Mail für Referenz [ref:${responseId}] konnte zum Labeln/Markieren nicht wiedergefunden werden.`);
+    }
+  } catch (auditError) {
+    Logger.log(`❌ Fehler beim Erstellen/Labeln der Audit-Mail: ${auditError.toString()}`);
+  }
+}
+
 // Wird per Formular-Trigger (siehe setupTriggers()) bei jeder neuen
 // Formular-Antwort ausgelöst. Erzeugt eine E-Mail im selben Klartext-Format,
 // das parseEmailTemplate() weiter oben erwartet ("Datum:", "Slot:", ...),
