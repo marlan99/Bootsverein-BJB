@@ -880,19 +880,18 @@ function sendWelcomeMail(toEmail, vorname, nachname, adminEmail, attachmentBlob)
     ${testNoticeHtml}
     Hallo ${name},<br><br>
     Herzlich Willkommen im <b>Bootsclub 1890</b>!<br><br>
-    Deine E-Mail-Adresse wurde erfolgreich für unser automatisiertes Buchungssystem freigeschaltet.<br><br>
-    Ab sofort kannst du Bootstermine direkt per E-Mail buchen.
+    Du wurdest soeben für unser automatisiertes Buchungssystem als Mitglied aufgelistet.<br><br>
     <br>
     <b>Im Anhang dieser E-Mail findest du die detaillierte Anleitung als PDF-Datei.</b><br><br>
     Hier sind die wichtigsten Kernpunkte im Überblick:<br>
-    • Buche das Boot über das Webformular</b>.<br>
+    • Buche das Boot über das Webformular.<br>
     • Für eine Stornierung benutze ebenfalls dasselbe Webformular (bis max. 24 Stunden vor dem Termin möglich).<br><br>
     Bitte lies dir die angehängte PDF-Anleitung aufmerksam durch, bevor du deine erste Buchung vornimmst.<br><br>
     Bei Fragen steht dir der Vorstand jederzeit gerne zur Verfügung.<br><br>
     Allzeit gute Fahrt und viel Spass auf dem Wasser!<br><br>
     <b>Dein Vorstand</b><br>
   `;
-  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDeine E-Mail wurde für das Buchungssystem freigeschaltet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
+  const plainBody = `${testNoticePlain}Hallo ${name},\n\nherzlich willkommen beim Bootsclub 1890!\nDu wurdest soeben für unser automatisiertes Buchungssystem als Mitglied aufgelistet.\n\nEine detaillierte Anleitung findest du im Anhang dieser E-Mail als PDF.\n\nAllzeit gute Fahrt!\nDein Vorstand`;
   try {
     const options = {
       cc: finalCc, 
@@ -1049,7 +1048,7 @@ function ausfuehrenKalenderSynchronisierung() {
 // Versand fehl (z.B. wegen Google-Limitierungen), wird stattdessen ein Entwurf
 // im Thread abgelegt – analog zu sendRejectionEmail(). So wirft executeCancellation()
 // in diesen Fällen keine Exception mehr und der Thread wird korrekt mit
-// 'ABGELEHNT' bzw. dem Label 'buchen/Abgelehnt' verarbeitet.
+// 'ABGELEHNT' bzw. dem Label 'Buchen/Abgelehnt' verarbeitet.
 function sendCancellationRejectionEmail(to, subject, body, thread) {
   try {
     GmailApp.sendEmail(to, subject, body, { replyTo: CONFIG.ADMIN_EMAIL });
@@ -1075,7 +1074,7 @@ function executeCancellation(data, userId, thread, message) {
   const memberData = getAuthorizedUserData(userId);
   
   if (!memberData) {
-    sendCancellationRejectionEmail(userId, '❌ Löschen der buchen abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
+    sendCancellationRejectionEmail(userId, '❌ Löschen der Buchung abgelehnt', `Deine E-Mail-Adresse (${userId}) ist nicht im System hinterlegt.`, thread);
     return false;
   }
 
