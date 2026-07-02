@@ -1774,7 +1774,7 @@ function setupTriggers() {
   existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
 
   // Trigger-Definitionen
-  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
   ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
 
