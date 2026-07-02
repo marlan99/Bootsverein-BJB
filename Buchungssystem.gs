@@ -1678,7 +1678,17 @@ function sendeFormularAntwortenPerMail(e) {
     // Direktes Senden der Mail mit den erweiterten Optionen
     GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, plainBody, advancedOptions);
     console.info(`✅ Neue Buchungsanfrage als Mail weitergeleitet.`);
-  } catch (error) {
+
+    // Utilities.sleep(3000); // 3 Sekunden
+
+    try {
+      Logger.log("⚡ Starte sofortige Verarbeitung der soeben eingegangenen Buchungsanfrage...");
+      processReservationEmails();
+    } catch (processError) {
+      Logger.log("⚠️ Fehler bei der sofortigen Verarbeitung (wird beim nächsten regulären Trigger nachgeholt): " + processError.toString());
+    }
+
+} catch (error) {
     console.warn(`⚠️ Direktes Senden fehlgeschlagen. Fehler: ${error.message}`);
 
     try {
