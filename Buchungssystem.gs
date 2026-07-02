@@ -24,6 +24,20 @@ const CONFIG = {
 // 1. KERN-LOGIK: BUCHUNGEN & STORNIERUNGEN VERARBEITEN (OPTIMIERT)
 // =============================================================================
 
+function runScheduledTasks() {
+  try {
+    processReservationEmails();
+  } catch (e) {
+    Logger.log("❌ Fehler in processReservationEmails() innerhalb von runScheduledTasks(): " + e.toString());
+  }
+
+  try {
+    importExcelToSheets();
+  } catch (e) {
+    Logger.log("❌ Fehler in importExcelToSheets() innerhalb von runScheduledTasks(): " + e.toString());
+  }
+}
+
 function processReservationEmails() {
   let labelNeu = GmailApp.getUserLabelByName(CONFIG.GMAIL_LABEL) || createGmailLabelStructure(CONFIG.GMAIL_LABEL);
 
@@ -1774,9 +1788,8 @@ function setupTriggers() {
   existingTriggers.forEach(t => ScriptApp.deleteTrigger(t));
 
   // Trigger-Definitionen
-  ScriptApp.newTrigger('processReservationEmails').timeBased().everyMinutes(10).create();
+  ScriptApp.newTrigger('runScheduledTasks').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('sendDailyReservationReminders').timeBased().everyDays(1).atHour(4).create();
-  ScriptApp.newTrigger('importExcelToSheets').timeBased().everyMinutes(10).create();
 
   // Formular-Trigger (Web-Anmeldungen, siehe sendeFormularAntwortenPerMail() oben)
   // WICHTIG: Muss hier stehen, da oben ALLE bestehenden Trigger gelöscht werden -
