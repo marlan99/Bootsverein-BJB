@@ -1661,6 +1661,11 @@ function processFormSubmissionDirekt(e) {
 
   if (!data.valid) {
     verarbeitungsErgebnis = `❌ Abgelehnt (${data.error})`;
+    if (absenderEmail) {
+      sendRejectionEmail(absenderEmail, data.error, null);
+    } else {
+      Logger.log(`⚠️ Keine Rückmeldung möglich: absenderEmail fehlt (Grund: ${data.error})`);
+    }
   } else if (istStornierung) {
     const erfolg = executeCancellation(data, absenderEmail, null, null);
     verarbeitungsErgebnis = erfolg ? '✅ Storniert' : '❌ Abgelehnt';
