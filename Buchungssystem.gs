@@ -1616,6 +1616,17 @@ function processFormSubmissionDirekt(e) {
   const absenderEmail = letzteAntwort.getRespondentEmail() || null;
   const istStornierung = buchung.includes("Stornieren");
 
+  // ─── LOGGING: Rohdaten der Formular-Übertragung für Nachvollziehbarkeit in "Ausführungen" ───
+  Logger.log('📋 Formulardaten empfangen:');
+  Logger.log(`   Response-ID: ${responseId}`);
+  Logger.log(`   Zeitstempel: ${zeitstempel}`);
+  Logger.log(`   Absender-E-Mail: ${absenderEmail || 'NICHT ERFASST'}`);
+  Logger.log(`   Buchung/Stornieren: ${buchung}`);
+  Logger.log(`   Datum (roh): ${datumRaw}`);
+  Logger.log(`   Slot (roh): ${slotRaw}`);
+  Logger.log(`   Typ: ${typ || 'Standard'}`);
+  Logger.log(`   Beschreibung: ${beschreibung}`);
+
   // ─── data-Objekt analog zu parseEmailTemplate() aufbauen ───────────────
   const data = { valid: true };
 
