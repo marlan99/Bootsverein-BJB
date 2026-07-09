@@ -270,7 +270,7 @@ function validateRequest(data, userId, sender, calendar) {
       const startJahr = parseInt(parts[2], 10);
       if (startJahr === today.getFullYear()) {
         const earliestAllowedDate = new Date(startJahr, startMonat, startTag, 0, 0, 0, 0);
-        if (today < earliestAllowedDate) {
+        if (data.parsedDate < earliestAllowedDate) {
           const formatiertesStartDatum = `${String(startTag).padStart(2, '0')}.${String(startMonat + 1).padStart(2, '0')}.${startJahr}`;
           return { 
             valid: false, 
