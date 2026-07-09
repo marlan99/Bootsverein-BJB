@@ -1482,7 +1482,7 @@ function fetchAndSyncAnleitungPDF() {
 // =============================================================================
 
 function setEarliestBookingDate() {
-  const zielDatum = '01.06.2026';
+  const zielDatum = '27.08.2026';
   PropertiesService.getScriptProperties().setProperty('EARLIEST_BOOKING_DATE', zielDatum);
   Logger.log(`✅ Frühestmögliches Startdatum wurde erfolgreich auf den ${zielDatum} gesetzt!`);
 }
