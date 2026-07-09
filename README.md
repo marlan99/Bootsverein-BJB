@@ -2,4 +2,4 @@ Folgende Links sind nur Beispiele
 
 Link zum Webformular: https://docs.google.com/forms/d/e/1FAIpQLSdyuSlsEpTodAQ6WuW6ehL4M9d4xpQ2_idk5Boek5ni2noo7g/viewform?usp=header
 
-oder in Kurzform: https://forms.gle/z8vWNjqRYLfyoPSZ9
+oder in Kurzform: https://forms.gle/BPMg5TsusL9e5v9a9
