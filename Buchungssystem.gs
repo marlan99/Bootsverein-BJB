@@ -1780,7 +1780,7 @@ function setPropertiesId() {
   }
 
   if (!props.getProperty('TEST_MODUS_AKTIV')) {
-    props.setProperty('TEST_MODUS_AKTIV', 'true');  // Erlaubte Werte: 'true' oder 'false'
+    props.setProperty('TEST_MODUS_AKTIV', 'false');  // Erlaubte Werte: 'true' oder 'false'
     Logger.log('✅ TEST_MODUS_AKTIV wurde in den Skripteigenschaften gespeichert.');
   } else {
     Logger.log('ℹ️ TEST_MODUS_AKTIV existiert bereits – keine Änderung vorgenommen.');
