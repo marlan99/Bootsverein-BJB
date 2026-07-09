@@ -364,8 +364,7 @@ function createCalendarEvent(data, userId, calendar) {
       `Slot: ${data.slot.charAt(0).toUpperCase() + data.slot.slice(1)}`,
       `Typ: ${data.type.charAt(0).toUpperCase() + data.type.slice(1)}`,
       data.description ? `Beschreibung: ${data.description}` : '',
-      data.occasion ? `Anlass: ${data.occasion}` : '',
-      `Eingereicht per E-Mail`
+      data.occasion ? `Anlass: ${data.occasion}` : ''
     ].filter(Boolean).join('\n');
     const event = calendar.createEvent(title, data.startTime, data.endTime, { description: description });
     event.setColor(data.type === 'joker' ? CalendarApp.EventColor.RED : CalendarApp.EventColor.BLUE);
