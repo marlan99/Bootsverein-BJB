@@ -1,7 +1,6 @@
 function syncWeblingWithGoogleSheet() {
-  const sheetId = "SHEET_CONFIG_ID"; // Deine Google Sheet ID
-  const tabName = "Mitglieder";      // Name deines Tabellenblatts
-  const subdomain = "deinverein";    // Deine Webling-Subdomain
+  const sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_CONFIG_ID'); // Deine Google Sheet ID
+  const subdomain = "bootsclub1890";    // Deine Webling-Subdomain
   const apiKey = PropertiesService.getScriptProperties().getProperty('WEBLING_API_KEY');
   
   if (!apiKey) {
@@ -29,26 +28,13 @@ function syncWeblingWithGoogleSheet() {
   
   const weblingIds = JSON.parse(listResponse.getContentText()).objects.map(Number);
 
-  // 2. Google Sheet öffnen und bestehende IDs auslesen
-  const sheet = SpreadsheetApp.openById(sheetId).getSheetByName(tabName);
-  if (!sheet) {
-    Logger.log(`Fehler: Tabellenblatt "${tabName}" wurde nicht gefunden!`);
+  // 2. Google Sheet öffnen und das ERSTE Tabellenblatt nehmen
+  const sheets = SpreadsheetApp.openById(sheetId).getSheets();
+  if (sheets.length === 0) {
+    Logger.log("Fehler: Das Google Sheet enthält keine Tabellenblätter!");
     return;
   }
-
-  const lastRow = sheet.getLastRow();
-  let sheetData = [];
-  let sheetIds = [];
-  
-  if (lastRow > 1) {
-    // Holt alle Daten ab Zeile 2 (ID ist in Spalte A)
-    sheetData = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
-    sheetIds = sheetData.map(row => {
-      const val = row[0];
-      // Nur rein numerische Werte als Webling-ID interpretieren
-      return (!isNaN(val) && val !== "" && val !== null) ? Number(val) : null;
-    });
-  }
+  const sheet = sheets[0]; // [0] greift auf das erste Tabellenblatt von links zu
 
   // 3. IDs abgleichen
   // Neue Mitglieder: ID ist in Webling, aber nicht im Sheet (und wir ignorieren dort "null"-Werte von "BJB-000")
