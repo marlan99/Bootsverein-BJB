@@ -2,8 +2,16 @@ function fetchWeblingMemberDetails() {
   const subdomain = "bootsclub1890"; // Ersetze dies mit deiner Webling-Subdomain
   const apiKey = PropertiesService.getScriptProperties().getProperty('WEBLING_API_KEY');
   
-  if (!apiKey) {
-    Logger.log("Fehler: Kein API-Key vorhanden!");
+  // Falls die Property noch nicht existiert, mit Standardwert anlegen
+  if (apiKey === null) {
+    scriptProperties.setProperty('WEBLING_API_KEY', 'undefiniert');
+    apiKey = 'undefiniert';
+    Logger.log("WEBLING_API_KEY war nicht vorhanden und wurde mit dem Standardwert 'undefiniert' angelegt.");
+  }
+
+  // Wenn der Wert (noch) der Platzhalter ist, macht ein API-Aufruf keinen Sinn
+  if (apiKey === "undefiniert") {
+    Logger.log("Fehler: WEBLING_API_KEY ist noch nicht konfiguriert (Wert = 'undefiniert'). Bitte in den Skripteigenschaften einen echten API-Key hinterlegen.");
     return;
   }
 
