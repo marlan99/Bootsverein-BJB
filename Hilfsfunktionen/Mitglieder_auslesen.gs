@@ -1,7 +1,9 @@
 function fetchWeblingMemberDetails() {
   const subdomain = "bootsclub1890"; // Ersetze dies mit deiner Webling-Subdomain
-  const apiKey = PropertiesService.getScriptProperties().getProperty('WEBLING_API_KEY');
-  
+
+  const scriptProperties = PropertiesService.getScriptProperties();
+  let apiKey = scriptProperties.getProperty('WEBLING_API_KEY');
+
   // Falls die Property noch nicht existiert, mit Standardwert anlegen
   if (apiKey === null) {
     scriptProperties.setProperty('WEBLING_API_KEY', 'undefiniert');
